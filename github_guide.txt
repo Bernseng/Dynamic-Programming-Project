@@ -5,6 +5,7 @@
 
 When you're ready to commit and push changes made in the branch:
 5. git checkout main
+5a. git pull
 6. git merge work
 7. git push origin main
 
