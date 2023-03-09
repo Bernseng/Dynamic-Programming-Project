@@ -1,0 +1,9 @@
+1. git pull
+2. git branch “<feature name you are working on>”
+3. git checkout “<the branch name you created above>”
+3a. Or you can use git branch to get the list of existing branches or to know on which branch you are working on.
+4. git add -A
+5. git commit -m “<commit message>”
+6. git checkout master
+7. git pull
+8. git merge master
