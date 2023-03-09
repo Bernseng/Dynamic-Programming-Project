@@ -1,9 +1,14 @@
 1. git pull
-2. git branch “<feature name you are working on>”
-3. git checkout “<the branch name you created above>”
-4. git merge master
+2. git branch “<make your own branch>”
+
+When you're ready to commit and push changes made in the branch:
+3. git checkout main
+4. git merge main
 5. git add -A
 6. git commit -m “<commit message>”
 7. git push -u origin
 
 If you're in doubt of the name of the branch you've made in 3., type "git branch".
+
+When you want to enter your branch type:
+git branch <name of branch>
