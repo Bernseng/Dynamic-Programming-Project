@@ -3,7 +3,7 @@
 
 When you're ready to commit and push changes made in the branch:
 3. git checkout main
-4. git merge main
+4. git merge work
 5. git add -A
 6. git commit -m “<commit message>”
 7. git push origin main
