@@ -6,7 +6,7 @@ When you're ready to commit and push changes made in the branch:
 4. git merge main
 5. git add -A
 6. git commit -m “<commit message>”
-7. git push -u origin
+7. git push origin main
 
 If you're in doubt of the name of the branch you've made in 3., type "git branch".
 
