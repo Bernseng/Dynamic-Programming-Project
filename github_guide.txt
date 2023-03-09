@@ -1,12 +1,16 @@
 1. git pull
-2. git branch “<make your own branch>” / git checkout <name of branch>
+2. git branch “<make your own branch>” ONLY FIRST TIME
+2a. git checkout <name of branch>
+
+When you're done making changes to your branch:
 3. git add -A
 4. git commit -m “<commit message>”
+5. git push
 
-When you're ready to commit and push changes made in the branch:
+When you're ready to commit and push changes made in the branch to the main branch:
 5. git checkout main
-5a. git pull
-6. git merge work
+5a. git pull (if anyone have made changes to the main branch while you have been working in your branch)
+6. git merge <name of branch>
 7. git push origin main
 
 If you're in doubt of the name of the branch you've made in 3., type "git branch".
