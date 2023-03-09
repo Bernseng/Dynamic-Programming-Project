@@ -2,6 +2,9 @@
 2. git branch “<make your own branch>” ONLY FIRST TIME
 2a. git checkout <name of branch>
 
+If changes have been made to main branch and they are not represented in your work branch type:
+2b. git merge main
+
 When you're done making changes to your branch:
 3. git add -A
 4. git commit -m “<commit message>”
