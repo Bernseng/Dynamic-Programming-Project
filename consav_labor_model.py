@@ -1,17 +1,15 @@
 import time
 
-import numpy as np
 import numba as nb
-
+import numpy as np
 import quantecon as qe
-
+from consav.grids import equilogspace
+from consav.linear_interp import binary_search, interp_1d
+from consav.markov import choice, find_ergodic, log_rouwenhorst
+from consav.misc import elapsed
+from consav.quadrature import log_normal_gauss_hermite
 from EconModel import EconModelClass, jit
 
-from consav.grids import equilogspace
-from consav.markov import log_rouwenhorst, find_ergodic, choice
-from consav.quadrature import log_normal_gauss_hermite
-from consav.linear_interp import binary_search, interp_1d
-from consav.misc import elapsed
 
 class ConSavModelClass(EconModelClass):
 
@@ -146,7 +144,7 @@ class ConSavModelClass(EconModelClass):
                     c_plus = 0.99*c_plus_max # arbitary factor
                     v_plus = c_plus**(1-par.sigma)/(1-par.sigma)
                     vbeg_plus = par.z_trans@v_plus
-                    
+
                 else:
 
                     vbeg_plus = sol.vbeg.copy()
@@ -176,6 +174,98 @@ class ConSavModelClass(EconModelClass):
                 if it > par.max_iter_solve: raise ValueError('too many iterations in solve()')
         
         if do_print: print(f'model solved in {elapsed(t0)}')              
+
+    def prepare_simulate(self,algo='mc',do_print=True):
+        """ prepare simulation """
+
+        t0 = time.time()
+
+        par = self.par
+        sim = self.sim
+
+        if algo == 'mc':
+
+            sim.a_ini[:] = 0.0
+            sim.p_z_ini[:] = np.random.uniform(size=(par.simN,))
+            sim.p_z[:,:] = np.random.uniform(size=(par.simT,par.simN))
+
+        elif algo == 'hist':
+
+            sim.Dbeg[0,:,0] = par.z_ergodic
+            sim.Dbeg_[:,0] = par.z_ergodic
+
+        else:
+            
+            raise NotImplementedError
+
+        if do_print: print(f'model prepared for simulation in {time.time()-t0:.1f} secs')
+
+    def simulate(self,algo='mc',do_print=True):
+        """ simulate model """
+
+        t0 = time.time()
+
+        with jit(self) as model:
+
+            par = model.par
+            sim = model.sim
+            sol = model.sol
+
+            # prepare
+            if algo == 'hist': find_i_and_w(par,sol)
+
+            # time loop
+            for t in range(par.simT):
+                
+                if algo == 'mc':
+                    simulate_forwards_mc(t,par,sim,sol)
+                elif algo == 'hist':
+                    sim.D[t] = par.z_trans.T@sim.Dbeg[t]
+                    if t == par.simT-1: continue
+                    simulate_hh_forwards_choice(par,sol,sim.D[t],sim.Dbeg[t+1])
+                else:
+                    raise NotImplementedError
+
+        if do_print: print(f'model simulated in {elapsed(t0)} secs')
+            
+    def simulate_hist_alt(self,do_print=True):
+        """ simulate model """
+
+        t0 = time.time()
+
+
+        with jit(self) as model:
+
+            par = model.par
+            sim = model.sim
+            sol = model.sol
+
+            Dbeg = sim.Dbeg_
+            D = sim.D_
+
+            # a. prepare
+            find_i_and_w(par,sol)
+
+            # b. iterate
+            it = 0 
+            while True:
+
+                Dbeg_old = Dbeg.copy()
+                simulate_hh_forwards_stochastic(par,Dbeg,D)
+                simulate_hh_forwards_choice(par,sol,D,Dbeg)
+
+                max_abs_diff = np.max(np.abs(Dbeg-Dbeg_old))
+                if max_abs_diff < par.tol_simulate: 
+                    Dbeg[:,:] = Dbeg_old
+                    break
+
+                it += 1
+                if it > par.max_iter_simulate: raise ValueError('too many iterations in simulate()')
+
+        if do_print: 
+            print(f'model simulated in {elapsed(t0)} [{it} iterations]')
+
+
 
 ##################
 # solution - vfi #
@@ -266,3 +356,89 @@ def solve_hh_backwards_egm(par,c_plus,c,a):
             else: # unconstrained
                 c[i_z,i_a_lag] = interp_1d(m_vec,c_vec,m) 
                 a[i_z,i_a_lag] = m-c[i_z,i_a_lag] 
+
+
+############################
+# simulation - monte carlo #
+############################
+
+@nb.njit(parallel=True)
+def simulate_forwards_mc(t,par,sim,sol):
+    """ monte carlo simulation of model. """
+    
+    c = sim.c
+    a = sim.a
+    i_z = sim.i_z
+
+    for i in nb.prange(par.simN):
+
+        # a. lagged assets
+        if t == 0:
+            p_z_ini = sim.p_z_ini[i]
+            i_z_lag = choice(p_z_ini,par.z_ergodic_cumsum)
+            a_lag = sim.a_ini[i]
+        else:
+            i_z_lag = sim.i_z[t-1,i]
+            a_lag = sim.a[t-1,i]
+
+        # b. productivity
+        p_z = sim.p_z[t,i]
+        i_z_ = i_z[t,i] = choice(p_z,par.z_trans_cumsum[i_z_lag,:])
+
+        # c. consumption
+        c[t,i] = interp_1d(par.a_grid,sol.c[i_z_,:],a_lag)
+
+        # d. end-of-period assets
+        m = (1+par.r)*a_lag + par.w*par.z_grid[i_z_]
+        a[t,i] = m-c[t,i]
+
+##########################
+# simulation - histogram #
+##########################
+
+@nb.njit(parallel=True) 
+def find_i_and_w(par,sol):
+    """ find pol_indices and pol_weights for simulation """
+
+    i = sol.pol_indices
+    w = sol.pol_weights
+
+    for i_z in nb.prange(par.Nz):
+        for i_a_lag in nb.prange(par.Na):
+            
+            # a. policy
+            a_ = sol.a[i_z,i_a_lag]
+
+            # b. find i_ such a_grid[i_] <= a_ < a_grid[i_+1]
+            i_ = i[i_z,i_a_lag] = binary_search(0,par.a_grid.size,par.a_grid,a_) 
+
+            # c. weight
+            w[i_z,i_a_lag] = (par.a_grid[i_+1] - a_) / (par.a_grid[i_+1] - par.a_grid[i_])
+
+            # d. bound simulation
+            w[i_z,i_a_lag] = np.fmin(w[i_z,i_a_lag],1.0)
+            w[i_z,i_a_lag] = np.fmax(w[i_z,i_a_lag],0.0)
+
+@nb.njit
+def simulate_hh_forwards_stochastic(par,Dbeg,D):
+    D[:,:] = par.z_trans_T@Dbeg
+
+@nb.njit(parallel=True)   
+def simulate_hh_forwards_choice(par,sol,D,Dbeg_plus):
+    """ simulate choice transition """
+
+    for i_z in nb.prange(par.Nz):
+    
+        Dbeg_plus[i_z,:] = 0.0
+
+        for i_a_lag in range(par.Na):
+            
+            # i. from
+            D_ = D[i_z,i_a_lag]
+            if D_ <= 1e-12: continue
+
+            # ii. to
+            i_a = sol.pol_indices[i_z,i_a_lag]            
+            w = sol.pol_weights[i_z,i_a_lag]
+            Dbeg_plus[i_z,i_a] += D_*w
+            Dbeg_plus[i_z,i_a+1] += D_*(1.0-w)
