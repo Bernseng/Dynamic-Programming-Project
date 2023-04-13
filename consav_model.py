@@ -47,22 +47,20 @@ class ConSavModelClass(EconModelClass):
         par.a_max = 100.0 # maximum point in grid
         par.Na = 500 # number of grid points       
 
-        # simulation
-        par.simT = 500 # number of periods
-        par.simN = 100_000 # number of individuals (mc)
+        # labor supply
+        par.chi = 2.0 # disutility of labor
+        par.gamma = 2.0 # labor supply elasticity parameter
 
-        # tolerances
-        par.max_iter_solve = 10_000 # maximum number of iterations
-        par.max_iter_simulate = 10_000 # maximum number of iterations
+        # tolerance 
         par.tol_solve = 1e-8 # tolerance when solving
-        par.tol_simulate = 1e-8 # tolerance when simulating
+        par.max_iter_solve = 10_000 # maximum number of iterations
+
 
     def allocate(self):
         """ allocate model """
 
         par = self.par
         sol = self.sol
-        sim = self.sim
         
         # a. transition matrix
         
@@ -99,28 +97,13 @@ class ConSavModelClass(EconModelClass):
 
         # c. solution arrays
         sol.c = np.zeros((par.Nz,par.Na))
+        sol.h = np.zeros((par.Nz, par.Na)) # labor supply array
         sol.a = np.zeros((par.Nz,par.Na))
         sol.vbeg = np.zeros((par.Nz,par.Na))
 
         # hist
         sol.pol_indices = np.zeros((par.Nz,par.Na),dtype=np.int_)
         sol.pol_weights = np.zeros((par.Nz,par.Na))
-
-        # d. simulation arrays
-
-        # mc
-        sim.a_ini = np.zeros((par.simN,))
-        sim.p_z_ini = np.zeros((par.simN,))
-        sim.c = np.zeros((par.simT,par.simN))
-        sim.a = np.zeros((par.simT,par.simN))
-        sim.p_z = np.zeros((par.simT,par.simN))
-        sim.i_z = np.zeros((par.simT,par.simN),dtype=np.int_)
-
-        # hist
-        sim.Dbeg = np.zeros((par.simT,*sol.a.shape))
-        sim.D = np.zeros((par.simT,*sol.a.shape))
-        sim.Dbeg_ = np.zeros(sol.a.shape)
-        sim.D_ = np.zeros(sol.a.shape)
 
     def solve(self,do_print=True,algo='vfi'):
         """ solve model using value function iteration or egm """
@@ -141,7 +124,7 @@ class ConSavModelClass(EconModelClass):
                 # a. next-period value function
                 if it == 0: # guess on consuming everything
                     
-                    m_plus = (1+par.r)*par.a_grid[np.newaxis,:] + par.w*par.z_grid[:,np.newaxis]
+                    m_plus = (1+par.r)*par.a_grid[np.newaxis,:] + par.w*par.z_grid[:,np.newaxis]*h_plus
                     c_plus_max = m_plus - par.w*par.b
                     c_plus = 0.99*c_plus_max # arbitary factor
                     v_plus = c_plus**(1-par.sigma)/(1-par.sigma)
@@ -151,13 +134,14 @@ class ConSavModelClass(EconModelClass):
 
                     vbeg_plus = sol.vbeg.copy()
                     c_plus = sol.c.copy()
+                    h_plus = sol.h.copy()
 
                 # b. solve this period
                 if algo == 'vfi':
-                    solve_hh_backwards_vfi(par,vbeg_plus,c_plus,sol.vbeg,sol.c,sol.a)  
+                    solve_hh_backwards_vfi(par,vbeg_plus,c_plus,h_plus,sol.vbeg,sol.c,sol.h,sol.a)  
                     max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
                 elif algo == 'egm':
-                    solve_hh_backwards_egm(par,c_plus,sol.c,sol.a)
+                    solve_hh_backwards_egm(par,c_plus,sol.c,sol.h,sol.a)
                     max_abs_diff = np.max(np.abs(sol.c-c_plus))
                 else:
                     raise NotImplementedError
@@ -182,14 +166,14 @@ class ConSavModelClass(EconModelClass):
 ##################
 
 @nb.njit
-def value_of_choice(c,par,i_z,m,vbeg_plus):
-    """ value of choice for use in vfi """
+def value_of_choice(c,h,par,i_z,m,vbeg_plus):
+    """ value of choice for use in vfi with endogenous labor supply """
 
     # a. utility
-    utility = c[0]**(1-par.sigma)/(1-par.sigma)
+    utility = c**(1-par.sigma)/(1-par.sigma) - par.chi * h **(1+par.gamma)/(1+par.gamma)
 
     # b. end-of-period assets
-    a = m - c[0]
+    a = m - c + par.w * par.z_grid[i_z] * h # include labor income
 
     # c. continuation value     
     vbeg_plus_interp = interp_1d(par.a_grid,vbeg_plus[i_z,:],a)
@@ -199,7 +183,7 @@ def value_of_choice(c,par,i_z,m,vbeg_plus):
     return value
 
 @nb.njit(parallel=True)        
-def solve_hh_backwards_vfi(par,vbeg_plus,c_plus,vbeg,c,a):
+def solve_hh_backwards_vfi(par,vbeg_plus,c_plus,h_plus,vbeg,c,h,a):
     """ solve backwards with v_plus from previous iteration """
 
     v = np.zeros(vbeg_plus.shape)
@@ -209,26 +193,30 @@ def solve_hh_backwards_vfi(par,vbeg_plus,c_plus,vbeg,c,a):
         for i_a_lag in nb.prange(par.Na):
 
             # i. cash-on-hand and maximum consumption
-            m = (1+par.r)*par.a_grid[i_a_lag] + par.w*par.z_grid[i_z]
+            m = (1+par.r)*par.a_grid[i_a_lag] + par.w*par.z_grid[i_z] * h
             c_max = m - par.b*par.w
 
-            # ii. initial consumption and bounds
-            c_guess = np.zeros((1,1))
-            bounds = np.zeros((1,2))
+            # ii. initial consumption, labor and bounds
+            ch_guess = np.zeros((2,))
+            ch_bounds = np.zeros((2,2))
 
-            c_guess[0] = c_plus[i_z,i_a_lag]
-            bounds[0,0] = 1e-8 
-            bounds[0,1] = c_max
+            ch_guess[0] = c_plus[i_z,i_a_lag]
+            ch_guess[1] = h_plus[i_z,i_a_lag]
+            ch_bounds[0,0] = 1e-8
+            ch_bounds[0,1] = c_max
+            ch_bounds[1,0] = 1e-8
+            ch_bounds[1,1] = 1.0
 
             # iii. optimize
             results = qe.optimize.nelder_mead(value_of_choice,
-                c_guess, 
-                bounds=bounds,
+                ch_guess, 
+                bounds=ch_bounds,
                 args=(par,i_z,m,vbeg_plus))
 
             # iv. save
             c[i_z,i_a_lag] = results.x[0]
-            a[i_z,i_a_lag] = m-c[i_z,i_a_lag]
+            h[i_z, i_a_lag] = results.x[1]
+            a[i_z,i_a_lag] = m-c[i_z,i_a_lag] + par.w * par.z_grid[i_z] * h[i_z, i_a_lag]
             v[i_z,i_a_lag] = results.fun # convert to maximum
 
     # b. expectation step
