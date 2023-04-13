@@ -17,7 +17,7 @@ class ConSavModelClass(EconModelClass):
 
     def settings(self):
         """ fundamental settings """
-
+        self.name = 'ConSavModel_with_Labor'
         pass
 
     def setup(self):
@@ -48,8 +48,9 @@ class ConSavModelClass(EconModelClass):
         par.Na = 500 # number of grid points       
 
         # labor supply
-        par.chi = 2.0 # disutility of labor
-        par.gamma = 2.0 # labor supply elasticity parameter
+        par.nu = 2.0 # inverse Frisch elasticity of labor supply
+        par.tau_l = 0.0 # labor income tax
+        par.tau_a = 0.0 # capital income tax
 
         # tolerance 
         par.tol_solve = 1e-8 # tolerance when solving
@@ -97,7 +98,7 @@ class ConSavModelClass(EconModelClass):
 
         # c. solution arrays
         sol.c = np.zeros((par.Nz,par.Na))
-        sol.h = np.zeros((par.Nz, par.Na)) # labor supply array
+        sol.ell = np.zeros((par.Nz, par.Na)) # labor supply array
         sol.a = np.zeros((par.Nz,par.Na))
         sol.vbeg = np.zeros((par.Nz,par.Na))
 
@@ -123,7 +124,7 @@ class ConSavModelClass(EconModelClass):
 
                 # a. next-period value function
                 if it == 0: # guess on consuming everything
-                    
+
                     m_plus = (1+par.r)*par.a_grid[np.newaxis,:] + par.w*par.z_grid[:,np.newaxis]*h_plus
                     c_plus_max = m_plus - par.w*par.b
                     c_plus = 0.99*c_plus_max # arbitary factor
@@ -138,7 +139,7 @@ class ConSavModelClass(EconModelClass):
 
                 # b. solve this period
                 if algo == 'vfi':
-                    solve_hh_backwards_vfi(par,vbeg_plus,c_plus,h_plus,sol.vbeg,sol.c,sol.h,sol.a)  
+                    solve_hh_backwards_vfi(par, vbeg_plus, c_plus, h_plus, sol.vbeg, sol.c, sol.h, sol.a)  
                     max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
                 elif algo == 'egm':
                     solve_hh_backwards_egm(par,c_plus,sol.c,sol.h,sol.a)
@@ -170,7 +171,7 @@ def value_of_choice(c,h,par,i_z,m,vbeg_plus):
     """ value of choice for use in vfi with endogenous labor supply """
 
     # a. utility
-    utility = c**(1-par.sigma)/(1-par.sigma) - par.chi * h **(1+par.gamma)/(1+par.gamma)
+    utility = c**(1-par.sigma)/(1-par.sigma) - h **(1+par.nu)/(1+par.nu)
 
     # b. end-of-period assets
     a = m - c + par.w * par.z_grid[i_z] * h # include labor income
@@ -221,8 +222,6 @@ def solve_hh_backwards_vfi(par,vbeg_plus,c_plus,h_plus,vbeg,c,h,a):
 
     # b. expectation step
     vbeg[:,:] = par.z_trans@v
-
-
 
 ##################
 # solution - egm #
