@@ -39,8 +39,8 @@ class ConSavModelClass(EconModelClass):
 
         # labor supply
         par.nu = 2.0  # inverse Frisch elasticity of labor supply
-        par.tau_l = 0.0  # labor income tax
-        par.tau_a = 0.0  # capital income tax
+        par.tau_l = 0.1  # labor income tax
+        par.tau_a = 0.1  # capital income tax
 
         # saving
         par.r = 0.02 # interest rate
@@ -51,8 +51,8 @@ class ConSavModelClass(EconModelClass):
         par.Na = 500 # number of grid points       
 
         # simulation
-        par.simT = 500 # number of periods
-        par.simN = 100_000 # number of individuals (mc)
+        # par.simT = 500 # number of periods
+        # par.simN = 100_000 # number of individuals (mc)
 
         # tolerances
         par.max_iter_solve = 10_000 # maximum number of iterations
@@ -170,95 +170,95 @@ class ConSavModelClass(EconModelClass):
 
         if do_print: print(f'model solved in {elapsed(t0)}')             
 
-    def prepare_simulate(self,algo='mc',do_print=True):
-        """ prepare simulation """
+    # def prepare_simulate(self,algo='mc',do_print=True):
+    #     """ prepare simulation """
 
-        t0 = time.time()
+    #     t0 = time.time()
 
-        par = self.par
-        sim = self.sim
+    #     par = self.par
+    #     sim = self.sim
 
-        if algo == 'mc':
+    #     if algo == 'mc':
 
-            sim.a_ini[:] = 0.0
-            sim.p_z_ini[:] = np.random.uniform(size=(par.simN,))
-            sim.p_z[:,:] = np.random.uniform(size=(par.simT,par.simN))
+    #         sim.a_ini[:] = 0.0
+    #         sim.p_z_ini[:] = np.random.uniform(size=(par.simN,))
+    #         sim.p_z[:,:] = np.random.uniform(size=(par.simT,par.simN))
 
-        elif algo == 'hist':
+    #     elif algo == 'hist':
 
-            sim.Dbeg[0,:,0] = par.z_ergodic
-            sim.Dbeg_[:,0] = par.z_ergodic
+    #         sim.Dbeg[0,:,0] = par.z_ergodic
+    #         sim.Dbeg_[:,0] = par.z_ergodic
 
-        else:
+    #     else:
             
-            raise NotImplementedError
+    #         raise NotImplementedError
 
-        if do_print: print(f'model prepared for simulation in {time.time()-t0:.1f} secs')
+    #     if do_print: print(f'model prepared for simulation in {time.time()-t0:.1f} secs')
 
-    def simulate(self,algo='mc',do_print=True):
-        """ simulate model """
+    # def simulate(self,algo='mc',do_print=True):
+    #     """ simulate model """
 
-        t0 = time.time()
+    #     t0 = time.time()
 
-        with jit(self) as model:
+    #     with jit(self) as model:
 
-            par = model.par
-            sim = model.sim
-            sol = model.sol
+    #         par = model.par
+    #         sim = model.sim
+    #         sol = model.sol
 
-            # prepare
-            if algo == 'hist': find_i_and_w(par,sol)
+    #         # prepare
+    #         if algo == 'hist': find_i_and_w(par,sol)
 
-            # time loop
-            for t in range(par.simT):
+    #         # time loop
+    #         for t in range(par.simT):
                 
-                if algo == 'mc':
-                    simulate_forwards_mc(t,par,sim,sol)
-                elif algo == 'hist':
-                    sim.D[t] = par.z_trans.T@sim.Dbeg[t]
-                    if t == par.simT-1: continue
-                    simulate_hh_forwards_choice(par,sol,sim.D[t],sim.Dbeg[t+1])
-                else:
-                    raise NotImplementedError
+    #             if algo == 'mc':
+    #                 simulate_forwards_mc(t,par,sim,sol)
+    #             elif algo == 'hist':
+    #                 sim.D[t] = par.z_trans.T@sim.Dbeg[t]
+    #                 if t == par.simT-1: continue
+    #                 simulate_hh_forwards_choice(par,sol,sim.D[t],sim.Dbeg[t+1])
+    #             else:
+    #                 raise NotImplementedError
 
-        if do_print: print(f'model simulated in {elapsed(t0)} secs')
+    #     if do_print: print(f'model simulated in {elapsed(t0)} secs')
             
-    def simulate_hist_alt(self,do_print=True):
-        """ simulate model """
+    # def simulate_hist_alt(self,do_print=True):
+    #     """ simulate model """
 
-        t0 = time.time()
+    #     t0 = time.time()
 
 
-        with jit(self) as model:
+    #     with jit(self) as model:
 
-            par = model.par
-            sim = model.sim
-            sol = model.sol
+    #         par = model.par
+    #         sim = model.sim
+    #         sol = model.sol
 
-            Dbeg = sim.Dbeg_
-            D = sim.D_
+    #         Dbeg = sim.Dbeg_
+    #         D = sim.D_
 
-            # a. prepare
-            find_i_and_w(par,sol)
+    #         # a. prepare
+    #         find_i_and_w(par,sol)
 
-            # b. iterate
-            it = 0 
-            while True:
+    #         # b. iterate
+    #         it = 0 
+    #         while True:
 
-                Dbeg_old = Dbeg.copy()
-                simulate_hh_forwards_stochastic(par,Dbeg,D)
-                simulate_hh_forwards_choice(par,sol,D,Dbeg)
+    #             Dbeg_old = Dbeg.copy()
+    #             simulate_hh_forwards_stochastic(par,Dbeg,D)
+    #             simulate_hh_forwards_choice(par,sol,D,Dbeg)
 
-                max_abs_diff = np.max(np.abs(Dbeg-Dbeg_old))
-                if max_abs_diff < par.tol_simulate: 
-                    Dbeg[:,:] = Dbeg_old
-                    break
+    #             max_abs_diff = np.max(np.abs(Dbeg-Dbeg_old))
+    #             if max_abs_diff < par.tol_simulate: 
+    #                 Dbeg[:,:] = Dbeg_old
+    #                 break
 
-                it += 1
-                if it > par.max_iter_simulate: raise ValueError('too many iterations in simulate()')
+    #             it += 1
+    #             if it > par.max_iter_simulate: raise ValueError('too many iterations in simulate()')
 
-        if do_print: 
-            print(f'model simulated in {elapsed(t0)} [{it} iterations]')
+    #     if do_print: 
+    #         print(f'model simulated in {elapsed(t0)} [{it} iterations]')
 
 
 
