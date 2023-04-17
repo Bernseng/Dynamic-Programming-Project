@@ -9,6 +9,7 @@ from consav.markov import choice, find_ergodic, log_rouwenhorst
 from consav.misc import elapsed
 from consav.quadrature import log_normal_gauss_hermite
 from EconModel import EconModelClass, jit
+from scipy import optimize
 
 
 class ConSavModelClass(EconModelClass):
@@ -131,11 +132,16 @@ class ConSavModelClass(EconModelClass):
 
                 # a. next-period value function
                 if it == 0: # guess on consuming everything
-                    
                     m_plus = (1+par.r)*par.a_grid[np.newaxis,:] + par.w*par.z_grid[:,np.newaxis]
                     c_plus_max = m_plus - par.w*par.b
                     c_plus = 0.99*c_plus_max # arbitary factor
-                    ell_plus = np.ones_like(c_plus)  # initial guess for labor supply
+
+                    # Optimize labor supply for each grid point
+                    ell_plus = np.zeros_like(c_plus)  # initial guess for labor supply
+                    # for i in range(par.Nz):
+                    #     for j in range(par.Na):
+                    #         utility_func = lambda ell: -utility(c_plus[i, j], ell)
+                    #         ell_plus[i, j] = optimize.minimize_scalar(utility_func, bounds=(0, 1), method='bounded').x
                     v_plus = utility(c_plus, ell_plus)
                     vbeg_plus = par.z_trans@v_plus
 
