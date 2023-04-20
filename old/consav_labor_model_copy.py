@@ -1,23 +1,20 @@
 import time
 
-import numpy as np
 import numba as nb
-
+import numpy as np
 import quantecon as qe
-
-from EconModel import EconModelClass, jit
-
 from consav.grids import equilogspace
-from consav.markov import log_rouwenhorst, find_ergodic, choice
-from consav.quadrature import log_normal_gauss_hermite
 from consav.linear_interp import binary_search, interp_1d
+from consav.markov import choice, find_ergodic, log_rouwenhorst
 from consav.misc import elapsed
+from consav.quadrature import log_normal_gauss_hermite
+from EconModel import EconModelClass, jit
 
 class ConSavModelClass(EconModelClass):
 
     def settings(self):
         """ fundamental settings """
-        self.name = 'ConSavModel_with_Labor'
+
         pass
 
     def setup(self):
@@ -39,6 +36,11 @@ class ConSavModelClass(EconModelClass):
         par.sigma_xi = 0.10 # std. of transitory shock
         par.Nxi = 2 # number of grid points for xi
 
+        # labor supply
+        par.nu = 2.0  # inverse Frisch elasticity of labor supply
+        par.phi = 2.0  # labor income tax
+        par.tau_a = 0.01  # capital income tax
+
         # saving
         par.r = 0.02 # interest rate
         par.b = -0.10 # borrowing constraint relative to wage
@@ -47,15 +49,13 @@ class ConSavModelClass(EconModelClass):
         par.a_max = 100.0 # maximum point in grid
         par.Na = 500 # number of grid points       
 
-        # labor supply
-        par.nu = 2.0 # inverse Frisch elasticity of labor supply
-        par.tau_l = 0.0 # labor income tax
-        par.tau_a = 0.0 # capital income tax
+        # simulation
+        # par.simT = 500 # number of periods
+        # par.simN = 100_000 # number of individuals (mc)
 
-        # tolerance 
-        par.tol_solve = 1e-8 # tolerance when solving
+        # tolerances
         par.max_iter_solve = 10_000 # maximum number of iterations
-
+        par.tol_solve = 1e-8 # tolerance when solving
 
     def allocate(self):
         """ allocate model """
@@ -97,14 +97,15 @@ class ConSavModelClass(EconModelClass):
         par.a_grid = par.w*equilogspace(par.b,par.a_max,par.Na)
 
         # c. solution arrays
-        sol.c = np.zeros((par.Nz,par.Na))
-        sol.ell = np.zeros((par.Nz, par.Na)) # labor supply array
-        sol.a = np.zeros((par.Nz,par.Na))
-        sol.vbeg = np.zeros((par.Nz,par.Na))
+        sol.c = np.zeros((par.Nz, par.Na))
+        sol.a = np.zeros((par.Nz, par.Na))
+        sol.ell = np.zeros((par.Nz, par.Na))  # labor supply
+        sol.vbeg = np.zeros((par.Nz, par.Na))
 
         # hist
         sol.pol_indices = np.zeros((par.Nz,par.Na),dtype=np.int_)
         sol.pol_weights = np.zeros((par.Nz,par.Na))
+
 
     def solve(self,do_print=True,algo='vfi'):
         """ solve model using value function iteration or egm """
@@ -116,40 +117,46 @@ class ConSavModelClass(EconModelClass):
             par = model.par
             sol = model.sol
 
+            # define the utility function
+            def utility(c, ell):
+                return (c**(1-par.sigma) - 1)/(1-par.sigma) - par.nu*(ell**(1+par.phi))/(1+par.phi)
+
             # time loop
             it = 0
             while True:
-                
+
                 t0_it = time.time()
 
                 # a. next-period value function
                 if it == 0: # guess on consuming everything
-
-                    m_plus = (1+par.r)*par.a_grid[np.newaxis,:] + par.w*par.z_grid[:,np.newaxis]*h_plus
+                    
+                    m_plus = (1+par.r)*par.a_grid[np.newaxis,:] + par.w*par.z_grid[:,np.newaxis]
                     c_plus_max = m_plus - par.w*par.b
                     c_plus = 0.99*c_plus_max # arbitary factor
-                    v_plus = c_plus**(1-par.sigma)/(1-par.sigma)
+                    ell_plus_max = np.ones_like(c_plus)
+                    ell_plus = ell_plus_max * 0.99  # initial guess for labor supply
+                    v_plus = utility(c_plus, ell_plus)
                     vbeg_plus = par.z_trans@v_plus
-                    
+
                 else:
 
                     vbeg_plus = sol.vbeg.copy()
                     c_plus = sol.c.copy()
-                    h_plus = sol.h.copy()
+                    ell_plus = sol.ell.copy()
 
                 # b. solve this period
                 if algo == 'vfi':
-                    solve_hh_backwards_vfi(par, vbeg_plus, c_plus, h_plus, sol.vbeg, sol.c, sol.h, sol.a)  
+                    solve_hh_backwards_vfi(par,vbeg_plus,c_plus,ell_plus,sol.vbeg,sol.c,sol.ell,sol.a)  
                     max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
                 elif algo == 'egm':
-                    solve_hh_backwards_egm(par,c_plus,sol.c,sol.h,sol.a)
+                    solve_hh_backwards_egm(par,c_plus,ell_plus,sol.c,sol.ell,sol.a)
                     max_abs_diff = np.max(np.abs(sol.c-c_plus))
                 else:
                     raise NotImplementedError
 
                 # c. check convergence
                 converged = max_abs_diff < par.tol_solve
-                
+
                 # d. break
                 if do_print and (converged or it < 10 or it%100 == 0):
                     print(f'iteration {it:4d} solved in {elapsed(t0_it):10s}',end='')              
@@ -159,32 +166,35 @@ class ConSavModelClass(EconModelClass):
 
                 it += 1
                 if it > par.max_iter_solve: raise ValueError('too many iterations in solve()')
-        
-        if do_print: print(f'model solved in {elapsed(t0)}')              
+
+        if do_print: print(f'model solved in {elapsed(t0)}')             
+
 
 ##################
 # solution - vfi #
 ##################
 
 @nb.njit
-def value_of_choice(c,h,par,i_z,m,vbeg_plus):
-    """ value of choice for use in vfi with endogenous labor supply """
+def value_of_choice(c_ell, par, i_z, m, vbeg_plus):
+    """ value of choice for use in vfi """
+
+    c, ell = c_ell
 
     # a. utility
-    utility = c**(1-par.sigma)/(1-par.sigma) - h **(1+par.nu)/(1+par.nu)
+    utility = (c**(1-par.sigma))/(1-par.sigma) - par.nu*(ell**(1+par.phi))/(1+par.phi)
 
     # b. end-of-period assets
-    a = m - c + par.w * par.z_grid[i_z] * h # include labor income
+    a = m - c - ell * par.w * par.z_grid[i_z]
 
     # c. continuation value     
-    vbeg_plus_interp = interp_1d(par.a_grid,vbeg_plus[i_z,:],a)
+    vbeg_plus_interp = interp_1d(par.a_grid, vbeg_plus[i_z, :], a)
 
     # d. total value
-    value = utility + par.beta*vbeg_plus_interp
+    value = utility + par.beta * vbeg_plus_interp
     return value
 
-@nb.njit(parallel=True)        
-def solve_hh_backwards_vfi(par,vbeg_plus,c_plus,h_plus,vbeg,c,h,a):
+@nb.njit(parallel=True)
+def solve_hh_backwards_vfi(par, vbeg_plus, c_plus, ell_plus, vbeg, c, ell, a):
     """ solve backwards with v_plus from previous iteration """
 
     v = np.zeros(vbeg_plus.shape)
@@ -194,34 +204,36 @@ def solve_hh_backwards_vfi(par,vbeg_plus,c_plus,h_plus,vbeg,c,h,a):
         for i_a_lag in nb.prange(par.Na):
 
             # i. cash-on-hand and maximum consumption
-            m = (1+par.r)*par.a_grid[i_a_lag] + par.w*par.z_grid[i_z] * h
-            c_max = m - par.b*par.w
+            m = (1 + par.r) * par.a_grid[i_a_lag] + par.w * par.z_grid[i_z]
+            c_max = m - par.b * par.w
 
-            # ii. initial consumption, labor and bounds
-            ch_guess = np.zeros((2,))
-            ch_bounds = np.zeros((2,2))
+            # ii. initial consumption and labor supply, and bounds
+            c_ell_guess = np.zeros(2)
+            bounds = np.zeros((2, 2))
 
-            ch_guess[0] = c_plus[i_z,i_a_lag]
-            ch_guess[1] = h_plus[i_z,i_a_lag]
-            ch_bounds[0,0] = 1e-8
-            ch_bounds[0,1] = c_max
-            ch_bounds[1,0] = 1e-8
-            ch_bounds[1,1] = 1.0
+            c_ell_guess[0] = c_plus[i_z, i_a_lag]
+            c_ell_guess[1] = ell_plus[i_z, i_a_lag]
+            bounds[0, 0] = 1e-8
+            bounds[0, 1] = c_max
+            bounds[1, 0] = 1e-8
+            bounds[1, 1] = 1
 
             # iii. optimize
             results = qe.optimize.nelder_mead(value_of_choice,
-                ch_guess, 
-                bounds=ch_bounds,
-                args=(par,i_z,m,vbeg_plus))
+                                              c_ell_guess,
+                                              bounds=bounds,
+                                              args=(par, i_z, m, vbeg_plus))
 
             # iv. save
-            c[i_z,i_a_lag] = results.x[0]
-            h[i_z, i_a_lag] = results.x[1]
-            a[i_z,i_a_lag] = m-c[i_z,i_a_lag] + par.w * par.z_grid[i_z] * h[i_z, i_a_lag]
-            v[i_z,i_a_lag] = results.fun # convert to maximum
+            c[i_z, i_a_lag] = results.x[0]
+            ell[i_z, i_a_lag] = results.x[1]
+            a[i_z, i_a_lag] = m - c[i_z, i_a_lag] - ell[i_z, i_a_lag] * par.w * par.z_grid[i_z]
+            v[i_z, i_a_lag] = results.fun  # convert to maximum
 
     # b. expectation step
-    vbeg[:,:] = par.z_trans@v
+    vbeg[:, :] = par.z_trans @ v
+
+
 
 ##################
 # solution - egm #
@@ -253,3 +265,4 @@ def solve_hh_backwards_egm(par,c_plus,c,a):
             else: # unconstrained
                 c[i_z,i_a_lag] = interp_1d(m_vec,c_vec,m) 
                 a[i_z,i_a_lag] = m-c[i_z,i_a_lag] 
+
