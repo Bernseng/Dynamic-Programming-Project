@@ -199,14 +199,14 @@ class ConSavingLaborModel(ModelClass):
                     egm.egm(par,sol,t,m,c,inv_v) # solve by egm
 
                     # ii. add zero consumption
-                    # sol.m[t,0] = par.a_min[t]
-                    # sol.m[t,1:] = m
-                    # sol.c[t,0] = 0
-                    # sol.c[t,1:] = c
-                    # sol.l[t,0] = 0
-                    # sol.l[t,1:] = l
-                    # sol.inv_v[t,0] = 0
-                    # sol.inv_v[t,1:] = inv_v
+                    sol.m[t,0] = par.a_min[t]
+                    sol.m[t,1:] = m
+                    sol.c[t,0] = 0
+                    sol.c[t,1:] = c
+                    sol.l[t,0] = 0
+                    sol.l[t,1:] = l
+                    sol.inv_v[t,0] = 0
+                    sol.inv_v[t,1:] = inv_v
             
         toc = time.time()
 
