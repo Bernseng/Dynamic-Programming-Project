@@ -26,7 +26,7 @@ from EconModel import EconModelClass, jit
 # import simulate
 import lastperiod
 import utility
-import egm
+import BufferStock_labor.egm as egm
 
 class ConSavingLaborModel(ModelClass):    
 
