@@ -25,12 +25,13 @@ from consav.misc import elapsed
 # local modules
 import utility
 import last_period
-import BufferStock_labor.post_decision as post_decision
+import post_decision
 import vfi
 import nvfi
-import BufferStock_labor.egm as egm
+import egm
 import simulate
 import figs
+import tools
 
 ############
 # 2. model #
@@ -55,7 +56,7 @@ class BufferStockModelClass(ModelClass):
         self.savefolder = 'saved'
         
         # d. list not-floats for safe type inference
-        self.not_floats = ['T','Npsi','Nxi','Nm','Np','Na','Nl','do_print','do_simple_w','simT','simN','sim_seed','cppthreads','Nshocks']
+        self.not_floats = ['T','Npsi','Nz','Nm','Np','Na','Nl','do_print','do_simple_w','simT','simN','sim_seed','cppthreads','Nshocks']
 
         # e. cpp
         self.cpp_filename = 'cppfuncs/egm.cpp'
@@ -67,7 +68,7 @@ class BufferStockModelClass(ModelClass):
         par = self.par
 
         # a. solution method
-        par.solmethod = 'nvfi'
+        par.solmethod = 'vfi'
         
         # b. horizon
         par.T = 5
@@ -75,23 +76,23 @@ class BufferStockModelClass(ModelClass):
         # c. preferences
         par.beta = 0.96
         par.rho = 2.0 # if par.rho = 2 the type is incorrectly inferred as int (error rasied)
-        par.chi = 1.0
-        par.gamma = 2.0
+        par.varphi = 1.0
+        par.nu = 2.0
 
         # d. returns and income
         par.R = 1.03
-        par.sigma_psi = 0.1
-        par.Npsi = 6
-        par.sigma_xi = 0.1
-        par.Nxi = 6
+        par.sigma_z = 0.1
+        par.Nz = 6
+        # par.sigma_z = 0.1
+        # par.Nz = 6
         par.pi = 0.1
         par.mu = 0.5
+        par.tau = 0.01
         
         # e. grids (number of points)
         par.Nm = 600
         par.Np = 400
         par.Na = 800
-        par.Nl = 100
 
         # f. misc
         par.tol = 1e-8
@@ -118,21 +119,18 @@ class BufferStockModelClass(ModelClass):
 
         # a. states (unequally spaced vectors of length Nm)
         par.grid_m = nonlinspace(1e-6, 20, par.Nm, 1.1)
-        par.grid_p = nonlinspace(1e-4, 10, par.Np, 1.1)
+        par.grid_z = nonlinspace(1e-4, 10, par.Np, 1.1)
         
         # b. post-decision states (unequally spaced vector of length Na)
-        par.grid_a = nonlinspace(1e-6, 20, par.Na, 1.1)
-
-        # c. labor grid
-        par.grid_l = nonlinspace(1e-6, 1, par.Nl, 1.1)
-        
+        par.grid_a = nonlinspace(1e-6, 20, par.Na, 1.1)        
         
         # d. shocks (qudrature nodes and weights using GaussHermite)
-        shocks = create_PT_shocks(
-            par.sigma_psi,par.Npsi,par.sigma_xi,par.Nxi,
-            par.pi,par.mu)
-        par.psi,par.psi_w,par.xi,par.xi_w,par.Nshocks = shocks
+        # shocks = create_PT_shocks(
+        #     par.sigma_z,par.Nz,
+        #     par.pi,par.mu)
+        # par.z,par.z_w,par.Nshocks = shocks
 
+        z,z_w = tools.GaussHermite_lognorm(par.sigma_z,par.Nz)
         # e. set seed
         np.random.seed(self.par.sim_seed)
 
@@ -244,30 +242,30 @@ class BufferStockModelClass(ModelClass):
         sim = self.sim
 
         # a. allocate
-        sim.p = np.nan * np.zeros((par.simT, par.simN))
+        # sim.p = np.nan * np.zeros((par.simT, par.simN))
         sim.m = np.nan * np.zeros((par.simT, par.simN))
         sim.c = np.nan * np.zeros((par.simT, par.simN))
         sim.a = np.nan * np.zeros((par.simT, par.simN))
         sim.l = np.nan * np.zeros((par.simT, par.simN))  # Allocate memory for labor choice 'l'
 
         # b. draw random shocks
-        sim.psi = np.ones((par.simT, par.simN))
-        sim.xi = np.ones((par.simT, par.simN))
+        # sim.psi = np.ones((par.simT, par.simN))
+        sim.z = np.ones((par.simT, par.simN))
         """ allocate memory for simulation """
 
         par = self.par
         sim = self.sim
 
         # a. allocate
-        sim.p = np.nan * np.zeros((par.simT, par.simN))
+        # sim.p = np.nan * np.zeros((par.simT, par.simN))
         sim.m = np.nan * np.zeros((par.simT, par.simN))
         sim.c = np.nan * np.zeros((par.simT, par.simN))
         sim.a = np.nan * np.zeros((par.simT, par.simN))
         sim.l = np.nan * np.zeros((par.simT, par.simN))  # Allocate memory for labor choice 'l'
 
         # b. draw random shocks
-        sim.psi = np.ones((par.simT, par.simN))
-        sim.xi = np.ones((par.simT, par.simN))
+        # sim.psi = np.ones((par.simT, par.simN))
+        sim.z = np.ones((par.simT, par.simN))
 
     def simulate(self):
         """ simulate model """
@@ -283,10 +281,10 @@ class BufferStockModelClass(ModelClass):
             # a. allocate memory and draw random numbers
             I = np.random.choice(par.Nshocks,
                                  size=(par.T, par.simN),
-                                 p=par.psi_w * par.xi_w)
+                                 p=par.z_w)
 
-            sim.psi[:] = par.psi[I]
-            sim.xi[:] = par.xi[I]
+            # sim.psi[:] = par.psi[I]
+            sim.z[:] = par.z[I]
 
             # b. simulate
             simulate.lifecycle(sim, sol, par)
