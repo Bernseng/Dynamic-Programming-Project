@@ -11,6 +11,7 @@ from consav.quadrature import log_normal_gauss_hermite
 from EconModel import EconModelClass, jit
 from scipy import optimize
 
+
 class ConSavModelClass(EconModelClass):
 
     def settings(self):
@@ -39,8 +40,8 @@ class ConSavModelClass(EconModelClass):
 
         # labor supply
         par.nu = 2.0  # inverse Frisch elasticity of labor supply
-        par.phi = 2.0  # labor income tax
-        par.tau_a = 0.01  # capital income tax
+        par.tau_l = 0.1  # labor income tax
+        par.tau_a = 0.1  # capital income tax
 
         # saving
         par.r = 0.02 # interest rate
@@ -63,6 +64,7 @@ class ConSavModelClass(EconModelClass):
 
         par = self.par
         sol = self.sol
+        sim = self.sim
         
         # a. transition matrix
         
@@ -120,7 +122,7 @@ class ConSavModelClass(EconModelClass):
 
             # define the utility function
             def utility(c, ell):
-                return (c**(1-par.sigma) - 1)/(1-par.sigma) - par.nu*(ell**(1+par.phi))/(1+par.phi)
+                return (c**(1-par.sigma) - 1)/(1-par.sigma) - par.nu*(ell**(1+par.tau_l))/(1+par.tau_l)
 
             # time loop
             it = 0
@@ -133,7 +135,6 @@ class ConSavModelClass(EconModelClass):
                     m_plus = (1+par.r)*par.a_grid[np.newaxis,:] + par.w*par.z_grid[:,np.newaxis]
                     c_plus_max = m_plus - par.w*par.b
                     c_plus = 0.99*c_plus_max # arbitary factor
-<<<<<<< HEAD:consav_labor_model_copy.py
 
                     # Optimize labor supply for each grid point
                     ell_plus = np.zeros_like(c_plus)  # initial guess for labor supply
@@ -141,10 +142,6 @@ class ConSavModelClass(EconModelClass):
                     #     for j in range(par.Na):
                     #         utility_func = lambda ell: -utility(c_plus[i, j], ell)
                     #         ell_plus[i, j] = optimize.minimize_scalar(utility_func, bounds=(0, 1), method='bounded').x
-=======
-                    ell_plus_max = np.ones_like(c_plus)
-                    ell_plus = ell_plus_max * 0.99  # initial guess for labor supply
->>>>>>> ce7efb075ab4dcd8955be01a77c840253880920a:old/consav_labor_model_copy.py
                     v_plus = utility(c_plus, ell_plus)
                     vbeg_plus = par.z_trans@v_plus
 
@@ -179,6 +176,97 @@ class ConSavModelClass(EconModelClass):
 
         if do_print: print(f'model solved in {elapsed(t0)}')             
 
+    # def prepare_simulate(self,algo='mc',do_print=True):
+    #     """ prepare simulation """
+
+    #     t0 = time.time()
+
+    #     par = self.par
+    #     sim = self.sim
+
+    #     if algo == 'mc':
+
+    #         sim.a_ini[:] = 0.0
+    #         sim.p_z_ini[:] = np.random.uniform(size=(par.simN,))
+    #         sim.p_z[:,:] = np.random.uniform(size=(par.simT,par.simN))
+
+    #     elif algo == 'hist':
+
+    #         sim.Dbeg[0,:,0] = par.z_ergodic
+    #         sim.Dbeg_[:,0] = par.z_ergodic
+
+    #     else:
+            
+    #         raise NotImplementedError
+
+    #     if do_print: print(f'model prepared for simulation in {time.time()-t0:.1f} secs')
+
+    # def simulate(self,algo='mc',do_print=True):
+    #     """ simulate model """
+
+    #     t0 = time.time()
+
+    #     with jit(self) as model:
+
+    #         par = model.par
+    #         sim = model.sim
+    #         sol = model.sol
+
+    #         # prepare
+    #         if algo == 'hist': find_i_and_w(par,sol)
+
+    #         # time loop
+    #         for t in range(par.simT):
+                
+    #             if algo == 'mc':
+    #                 simulate_forwards_mc(t,par,sim,sol)
+    #             elif algo == 'hist':
+    #                 sim.D[t] = par.z_trans.T@sim.Dbeg[t]
+    #                 if t == par.simT-1: continue
+    #                 simulate_hh_forwards_choice(par,sol,sim.D[t],sim.Dbeg[t+1])
+    #             else:
+    #                 raise NotImplementedError
+
+    #     if do_print: print(f'model simulated in {elapsed(t0)} secs')
+            
+    # def simulate_hist_alt(self,do_print=True):
+    #     """ simulate model """
+
+    #     t0 = time.time()
+
+
+    #     with jit(self) as model:
+
+    #         par = model.par
+    #         sim = model.sim
+    #         sol = model.sol
+
+    #         Dbeg = sim.Dbeg_
+    #         D = sim.D_
+
+    #         # a. prepare
+    #         find_i_and_w(par,sol)
+
+    #         # b. iterate
+    #         it = 0 
+    #         while True:
+
+    #             Dbeg_old = Dbeg.copy()
+    #             simulate_hh_forwards_stochastic(par,Dbeg,D)
+    #             simulate_hh_forwards_choice(par,sol,D,Dbeg)
+
+    #             max_abs_diff = np.max(np.abs(Dbeg-Dbeg_old))
+    #             if max_abs_diff < par.tol_simulate: 
+    #                 Dbeg[:,:] = Dbeg_old
+    #                 break
+
+    #             it += 1
+    #             if it > par.max_iter_simulate: raise ValueError('too many iterations in simulate()')
+
+    #     if do_print: 
+    #         print(f'model simulated in {elapsed(t0)} [{it} iterations]')
+
+
 
 ##################
 # solution - vfi #
@@ -191,7 +279,7 @@ def value_of_choice(c_ell, par, i_z, m, vbeg_plus):
     c, ell = c_ell
 
     # a. utility
-    utility = (c**(1-par.sigma))/(1-par.sigma) - par.nu*(ell**(1+par.phi))/(1+par.phi)
+    utility = (c**(1-par.sigma))/(1-par.sigma) - par.nu*(ell**(1+par.tau_l))/(1+par.tau_l)
 
     # b. end-of-period assets
     a = m - c - ell * par.w * par.z_grid[i_z]
