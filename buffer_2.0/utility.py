@@ -22,7 +22,9 @@ def marg_func_c(c, par):
 
 @njit
 def marg_func_l(c, par):
-    return c**(-par.rho/par.nu)*(par.w*par.xi*par.psi/par.varphi)**(1/par.rho)
+    return c**(-par.rho/par.nu)*(par.w
+                                #  *par.xi*par.psi
+                                 /par.varphi)**(1/par.rho)
 
 @njit
 def inv_marg_func_c(q, par):

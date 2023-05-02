@@ -9,7 +9,7 @@ def lifecycle(sim,sol,par):
     """ simulate full life-cycle """
 
     # unpack (to help numba optimize)
-    p = sim.p
+    # p = sim.p
     m = sim.m
     c = sim.c
     a = sim.a

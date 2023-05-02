@@ -46,7 +46,8 @@ class BufferStockModelClass(ModelClass):
         """ fundamental settings """
 
         # a. namespaces
-        self.namespaces = []
+        self.varlist = [
+            'l','c']
         
         # b. other attributes
         self.other_attrs = []
@@ -67,10 +68,10 @@ class BufferStockModelClass(ModelClass):
         par = self.par
 
         # a. solution method
-        par.solmethod = 'vfi' # changed fron nvfi
+        par.solmethod = 'nvfi' # changed fron nvfi
         
         # b. horizon
-        par.T = 3 # changed from 5
+        par.T = 5 # changed from 5
         
         # c. preferences
         par.beta = 0.96
@@ -79,25 +80,26 @@ class BufferStockModelClass(ModelClass):
 
         # d. returns and income
         par.R = 1.03
-        par.sigma_psi = 0.1
-        par.Npsi = 6
-        par.sigma_xi = 0.1
-        par.Nxi = 6
+        # par.sigma_psi = 0.1
+        # par.Npsi = 6
+        # par.sigma_xi = 0.1
+        # par.Nxi = 6
         par.pi = 0.1
         par.mu = 0.5
         par.varphi = 1.0 # added
         par.w = 1.0 # added
         
         # e. grids (number of points)
-        par.Nm = 100 # changed from 600
-        par.Np = 100 # changed from 400
-        par.Na = 200 # changed from 800
+        par.Nm = 600 # changed from 600
+        par.Np = 400 # changed from 400
+        par.Na = 800 # changed from 800
+        par.Nl = 7 # Number of labor supply grid points
 
         # f. misc
         par.tol = 1e-8
         par.do_print = True
         par.do_simple_w = False
-        par.cppthreads = 1
+        par.cppthreads = 2 # changed from 1 to enable multi-threading
 
         # g. simulation
         par.simT = par.T
@@ -118,16 +120,17 @@ class BufferStockModelClass(ModelClass):
 
         # a. states (unequally spaced vectors of length Nm)
         par.grid_m = nonlinspace(1e-6,20,par.Nm,1.1)
-        par.grid_p = nonlinspace(1e-4,10,par.Np,1.1)
-        
+        # par.grid_p = nonlinspace(1e-4,10,par.Np,1.1)
+        par.grid_l = nonlinspace(1e-6,1,par.Nl,1.1) # Labor supply grid between 0 and 1
+
         # b. post-decision states (unequally spaced vector of length Na)
         par.grid_a = nonlinspace(1e-6,20,par.Na,1.1)
         
         # c. shocks (qudrature nodes and weights using GaussHermite)
-        shocks = create_PT_shocks(
-            par.sigma_psi,par.Npsi,par.sigma_xi,par.Nxi,
-            par.pi,par.mu)
-        par.psi,par.psi_w,par.xi,par.xi_w,par.Nshocks = shocks
+        # shocks = create_PT_shocks(
+        #     par.sigma_psi,par.Npsi,par.sigma_xi,par.Nxi,
+        #     par.pi,par.mu)
+        # par.psi,par.psi_w,par.xi,par.xi_w,par.Nshocks = shocks
 
         # d. set seed
         np.random.seed(self.par.sim_seed)
@@ -236,7 +239,7 @@ class BufferStockModelClass(ModelClass):
         sim = self.sim
 
         # a. allocate
-        sim.p = np.nan*np.zeros((par.simT,par.simN))
+        # sim.p = np.nan*np.zeros((par.simT,par.simN))
         sim.m = np.nan*np.zeros((par.simT,par.simN))
         sim.c = np.nan*np.zeros((par.simT,par.simN))
         sim.l = np.nan*np.zeros((par.simT,par.simN)) # added l

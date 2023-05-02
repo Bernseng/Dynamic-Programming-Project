@@ -18,7 +18,7 @@ def solve(t,sol,par):
         for im in range(par.Nm):
             
             # a. states
-            _p = par.grid_p[ip]
+            # _p = par.grid_p[ip]
             m = par.grid_m[im]
             ell = np.zeros_like(m) # added zero grid for labor supply
 

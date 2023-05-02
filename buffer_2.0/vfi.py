@@ -1,5 +1,5 @@
 import numpy as np
-from numba import njit, prange
+from numba import njit, prange, jit
 
  # consav
 from consav import linear_interp # for linear interpolation
@@ -42,7 +42,7 @@ def obj_bellman(c, l, p, m, v_plus, par):
     return -value_of_choice # we are minimizing
 
 # b. solve bellman equation        
-# @njit(parallel=True)
+@jit(parallel=True)
 def solve_bellman(t, sol, par):
     """solve bellman equation using vfi with FOCs for consumption and labor"""
 
