@@ -9,7 +9,7 @@ import utility
 
 # a. define objective function
 @njit
-def obj_bellman(c,p,m,v_plus,par):
+def obj_bellman(c, l, p, m, v_plus, par):
     """ evaluate bellman equation """
 
     # a. end-of-period assets
@@ -27,7 +27,7 @@ def obj_bellman(c,p,m,v_plus,par):
 
         # ii. next-period states
         p_plus = p*psi
-        y_plus = p_plus*xi
+        y_plus = p_plus*xi*par.w*l
         m_plus = par.R*a + y_plus
         
         # iii. weight
@@ -37,38 +37,44 @@ def obj_bellman(c,p,m,v_plus,par):
         w += weight*par.beta*linear_interp.interp_2d(par.grid_p,par.grid_m,v_plus,p_plus,m_plus)
     
     # c. total value
-    value_of_choice = utility.func(c,par) + w
+    value_of_choice = utility.func(c,l,par) + w
 
     return -value_of_choice # we are minimizing
 
 # b. solve bellman equation        
-@njit(parallel=True)
-def solve_bellman(t,sol,par):
-    """solve bellman equation using vfi"""
+# @njit(parallel=True)
+def solve_bellman(t, sol, par):
+    """solve bellman equation using vfi with FOCs for consumption and labor"""
 
     # unpack (helps numba optimize)
     c = sol.c[t]
+    l = sol.l[t]
     v = sol.v[t]
 
-    # loop over outer states
-    for ip in prange(par.Np): # in parallel
+    # loop over outer states (permanent income)
+    for ip in prange(par.Np):
 
         # a. permanent income
         p = par.grid_p[ip]
 
-        # d. loop over cash-on-hand
+        # b. loop over cash-on-hand
         for im in range(par.Nm):
-            
-            # a. cash-on-hand
+
+            # i. cash-on-hand
             m = par.grid_m[im]
 
-            # b. optimal choice
-            c_low = np.fmin(m/2,1e-8)
-            c_high = m
-            c[ip,im] = golden_section_search.optimizer(obj_bellman,c_low,c_high,args=(p,m,sol.v[t+1],par),tol=par.tol)
+            # ii. use FOCs to find optimal consumption and labor supply
+            fac = ((par.w*p)/par.varphi)**(1.0/par.nu)
+            c_endo = (par.beta*sol.v[t+1,ip,:])**(-1.0/par.rho)
+            # c_endo = np.power(par.beta*sol.v[t+1,ip,:],(-1.0/par.rho)) # c_endo can also be calculated using the 'np.power' operator instead
+            l_endo = fac*(c_endo)**(-par.rho/par.nu)
 
-            # note: the above finds the minimum of obj_bellman in range [c_low,c_high] with a tolerance of par.tol
-            # and arguments (except for c) as specified 
+            # iii. interpolate consumption and labor supply
+            a_endo = m-c_endo+par.w*p*l_endo
+            a_exo = (1+par.R)*par.grid_m
 
-            # c. optimal value
-            v[ip,im] = -obj_bellman(c[ip,im],p,m,sol.v[t+1],par)
+            c[ip, im] = np.interp(a_exo,a_endo,c_endo)
+            l[ip, im] = np.interp(a_exo,a_endo,l_endo)
+
+            # iv. optimal value
+            v[ip,im]=(c[ip,im]**(1-par.rho))/(1-par.rho)-par.varphi*(l[ip,im]**(1+par.nu))/(1+par.nu)+par.beta*linear_interp.interp_2d(par.grid_p,par.grid_m,sol.v[t+1],p,a_exo)

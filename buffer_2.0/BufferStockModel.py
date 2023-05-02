@@ -70,7 +70,7 @@ class BufferStockModelClass(ModelClass):
         par.solmethod = 'vfi' # changed fron nvfi
         
         # b. horizon
-        par.T = 5
+        par.T = 3 # changed from 5
         
         # c. preferences
         par.beta = 0.96
@@ -86,11 +86,12 @@ class BufferStockModelClass(ModelClass):
         par.pi = 0.1
         par.mu = 0.5
         par.varphi = 1.0 # added
+        par.w = 1.0 # added
         
         # e. grids (number of points)
-        par.Nm = 600
-        par.Np = 400
-        par.Na = 800
+        par.Nm = 100 # changed from 600
+        par.Np = 100 # changed from 400
+        par.Na = 200 # changed from 800
 
         # f. misc
         par.tol = 1e-8
