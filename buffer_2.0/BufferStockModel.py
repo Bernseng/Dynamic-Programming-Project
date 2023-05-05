@@ -121,7 +121,7 @@ class BufferStockModelClass(ModelClass):
         # a. states (unequally spaced vectors of length Nm)
         par.grid_m = nonlinspace(1e-6,20,par.Nm,1.1)
         # par.grid_p = nonlinspace(1e-4,10,par.Np,1.1)
-        par.grid_l = nonlinspace(1e-6,1,par.Nl,1.1) # Labor supply grid between 0 and 1
+        par.grid_l = nonlinspace(1e-6,3,par.Nl,1.1) # Labor supply grid between 0 and 1
 
         # b. post-decision states (unequally spaced vector of length Na)
         par.grid_a = nonlinspace(1e-6,20,par.Na,1.1)
