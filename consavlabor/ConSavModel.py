@@ -13,6 +13,7 @@ from consav.linear_interp import binary_search, interp_1d, interp_1d_vec
 from consav.misc import elapsed
 
 import utility
+import egm
 
 class ConSavModelClass(EconModelClass):
 
@@ -118,6 +119,7 @@ class ConSavModelClass(EconModelClass):
         sim.a_ini = np.zeros((par.simN,))
         sim.p_z_ini = np.zeros((par.simN,))
         sim.c = np.zeros((par.simT,par.simN))
+        sim.l = np.zeros((par.simT,par.simN))
         sim.a = np.zeros((par.simT,par.simN))
         sim.p_z = np.zeros((par.simT,par.simN))
         sim.i_z = np.zeros((par.simT,par.simN),dtype=np.int_)
@@ -165,7 +167,7 @@ class ConSavModelClass(EconModelClass):
                     solve_hh_backwards_vfi(par,vbeg_plus,c_plus,ell,sol.vbeg,sol.c,sol.a)  
                     max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
                 elif algo == 'egm':
-                    solve_hh_backwards_egm(par,vbeg_plus,c_plus,ell,sol.c,sol.l,sol.a,sol.u)
+                    egm.solve_hh_backwards_egm(par,vbeg_plus,c_plus,ell,sol.c,sol.l,sol.a,sol.u)
                     max_abs_diff = np.max(np.abs(sol.c-c_plus))
                 else:
                     raise NotImplementedError
@@ -331,97 +333,7 @@ def solve_hh_backwards_vfi(par,vbeg_plus,c_plus,vbeg,c,a):
 
     # b. expectation step
     vbeg[:,:] = par.z_trans@v
-
-##################
-# solution - egm #
-##################
-
-# @nb.njit(parallel=True)
-def solve_hh_backwards_egm(par,vbeg_plus,c_plus,ell,c,l,a,u):
-    """ solve backwards with v_plus from previous iteration """
-
-    for i_z in nb.prange(par.Nz):
-
-        # prepare
-        # z = par.z_grid[i_z]
-
-        # a. post-decision marginal value of cash
-        q_vec = np.zeros(par.Na)
-        for i_z_plus in range(par.Nz):
-            q_vec += par.z_trans[i_z,i_z_plus]*c_plus[i_z_plus,:]**(-par.sigma)
-        
-        # print(f'q_vec = {q_vec}')
-        # b. implied consumption function
-        fac = (par.w/par.varphi)**(1.0/par.nu)
-        c_vec = (par.beta*q_vec)**(-1.0/par.sigma) #FOC c
-        l_vec = fac*(c_vec)**(-par.sigma/par.nu) #FOC l
-
-        m_endo = par.a_grid+c_vec - par.w*l_vec 
-        m_exo = (1 + par.r)*par.a_grid
-
-        # interpolate
-        interp_1d_vec(m_endo,c_vec,m_exo,c[i_z,:])
-        interp_1d_vec(m_endo,l_vec,m_exo,l[i_z,:])
-
-        # print(f'c = {c[i_z]}')
-        # calculating savings
-        a[i_z,:] = m_exo - c[i_z,:] + par.w*l_vec
-        # [i_z,:]
-        # l[i_z,:] = l_vec[i_z,:]*par.z_grid
-
-
-        # c. interpolate from (m,c) to (a_lag,c)
-        for i_a_lag in range(par.Na):
-        
-            # m = (1+par.r)*par.a_grid[i_a_lag] + par.w*par.z_grid[i_z]
-                
-                # if m <= m_vec[0]: # constrained (lower m than choice with a = 0)
-                #     c[i_z,i_a_lag] = m - par.b*par.w
-                #     a[i_z,i_a_lag] = par.b*par.w
-                # else: # unconstrained
-                #     c[i_z,i_a_lag] = interp_1d(m_vec,c_vec,m) 
-                #     a[i_z,i_a_lag] = m-c[i_z,i_a_lag] 
-            
-
-            # If borrowing constraint is violated
-            if a[i_z,i_a_lag] < 0.0:
-
-                # Set to borrowing constraint
-                a[i_z,i_a_lag] = 0.0 
-                
-                # Solve FOC for ell
-                ell = l_vec[i_a_lag] # removed ,i_z
-
-                it = 0
-                while True:
-
-                    ci = (1.0+par.r)*par.a_grid[i_a_lag] + par.w*ell
-                    error = ell - fac*ci**(-par.sigma/par.nu)
-                    if np.abs(error) < par.toll_l:
-                        break
-                    else:
-                        derror = 1.0 - fac*(-par.sigma/par.nu)*ci**(-par.sigma/par.nu - 1.0)*par.w
-                        ell = ell - error/derror
-
-                    it += 1
-                    if it > par.max_iter_l: 
-                        raise ValueError('too many iterations')
-
-                    # Save
-                    c[i_z,i_a_lag] = ci
-                    l[i_z,i_a_lag] = ell
-                    # l_vec[i_z,i_a_lag] = ell
-                    # l[i_z,i_a_lag] = par.z_grid*ell
-
-        # b. expectation steps
-    v_a = (1.0+par.r)*c[:]**(-par.sigma)
-    # v_a_matrix = np.repeat(v_a[np.newaxis, :], par.Nz, axis=0)
-    vbeg_plus = par.z_trans @ v_a
-    # vbeg_plus = par.z_trans@v_a
-
-    #Calculating utility
-    u[i_z, :] = utility.func(c[i_z, :], l[i_z, :], par)
-            
+      
 
 ############################
 # simulation - monte carlo #
@@ -432,6 +344,7 @@ def simulate_forwards_mc(t,par,sim,sol):
     """ monte carlo simulation of model. """
     
     c = sim.c
+    l = sim.l
     a = sim.a
     i_z = sim.i_z
 
@@ -453,8 +366,11 @@ def simulate_forwards_mc(t,par,sim,sol):
         # c. consumption
         c[t,i] = interp_1d(par.a_grid,sol.c[i_z_,:],a_lag)
 
+        # labor 
+        l[t,i] = interp_1d(par.a_grid,sol.l[i_z_,:],a_lag)
+
         # d. end-of-period assets
-        m = (1+par.r)*a_lag + par.w*par.z_grid[i_z_]
+        m = (1+par.r)*a_lag + par.w*par.z_grid[i_z_]*l[t,i]
         a[t,i] = m-c[t,i]
 
 ##########################
