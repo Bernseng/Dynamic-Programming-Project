@@ -14,6 +14,7 @@ from consav.misc import elapsed
 
 import utility
 import egm
+import vfi
 
 class ConSavModelClass(EconModelClass):
 
@@ -29,19 +30,24 @@ class ConSavModelClass(EconModelClass):
         
         # preferences
         par.beta = 0.96 # discount factor
+        par.beta_tilde = 0.96
+        par.sigma_beta = 0.01
         par.sigma = 2.0 # CRRA coefficient
         par.nu = 1.0 # CRRA coefficient labor
         par.varphi = 1.0
+        
         # income
         par.w = 1.0 # wage level
-        
         par.rho_zt = 0.96 # AR(1) parameter
         par.sigma_psi = 0.10 # std. of persistent shock
         par.Nzt = 5 # number of grid points for zt
-        
         par.sigma_xi = 0.10 # std. of transitory shock
         par.Nxi = 2 # number of grid points for xi
-
+        par.Nbeta = 3 # number of fixed discrete states
+        
+        # taxes
+        par.tau = 0.01 
+        
         # saving
         par.r = 0.02 # interest rate
         par.b = -0.10 # borrowing constraint relative to wage
@@ -59,8 +65,8 @@ class ConSavModelClass(EconModelClass):
         par.max_iter_simulate = 10_000 # maximum number of iterations
         par.tol_solve = 1e-8 # tolerance when solving
         par.tol_simulate = 1e-8 # tolerance when simulating
-        par.toll_l = 1e-12
-        par.max_iter_l = 30
+        par.tol_l = 1e-8
+        par.max_iter_l = 10_000
 
     def allocate(self):
         """ allocate model """
@@ -101,7 +107,7 @@ class ConSavModelClass(EconModelClass):
             par.b = b_min + 1e-8
 
         par.a_grid = par.w*equilogspace(par.b,par.a_max,par.Na)
-
+        par.beta_grid = np.array([par.beta_tilde-par.sigma_beta,par.beta_tilde,par.beta_tilde+par.sigma_beta])
         # c. solution arrays
         sol.c = np.zeros((par.Nz,par.Na))
         sol.l = np.zeros((par.Nz,par.Na)) #added labor
@@ -149,7 +155,7 @@ class ConSavModelClass(EconModelClass):
                 # a. next-period value function
                 if it == 0: # guess on consuming everything
                     
-                    ell = par.w*par.z_grid
+                    ell = (1-par.tau)*par.w*par.z_grid*0.0
                     m_plus = (1+par.r)*par.a_grid[np.newaxis,:] - ell[:,np.newaxis]
                     c_plus_max = m_plus - par.w*par.b
                     c_plus = 0.99*c_plus_max # arbitary factor
@@ -164,10 +170,10 @@ class ConSavModelClass(EconModelClass):
 
                 # b. solve this period
                 if algo == 'vfi':
-                    solve_hh_backwards_vfi(par,vbeg_plus,c_plus,ell,sol.vbeg,sol.c,sol.a)  
+                    vfi.solve_hh_backwards_vfi(par,vbeg_plus,c_plus,ell,sol.vbeg,sol.c,sol.a)  
                     max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
                 elif algo == 'egm':
-                    egm.solve_hh_backwards_egm(par,vbeg_plus,c_plus,ell,sol.c,sol.l,sol.a,sol.u)
+                    egm.solve_hh_backwards_egm(par,vbeg_plus,v_plus,c_plus,ell,sol.c,sol.l,sol.a,sol.u)
                     max_abs_diff = np.max(np.abs(sol.c-c_plus))
                 else:
                     raise NotImplementedError
@@ -277,64 +283,6 @@ class ConSavModelClass(EconModelClass):
         if do_print: 
             print(f'model simulated in {elapsed(t0)} [{it} iterations]')
 
-##################
-# solution - vfi #
-##################
-
-@nb.njit
-def value_of_choice(c,par,i_z,m,vbeg_plus):
-    """ value of choice for use in vfi """
-
-    # a. utility
-    utility = c[0]**(1-par.sigma)/(1-par.sigma)
-
-    # b. end-of-period assets
-    a = m - c[0]
-
-    # c. continuation value     
-    vbeg_plus_interp = interp_1d(par.a_grid,vbeg_plus[i_z,:],a)
-
-    # d. total value
-    value = utility + par.beta*vbeg_plus_interp
-    return value
-
-@nb.njit(parallel=True)        
-def solve_hh_backwards_vfi(par,vbeg_plus,c_plus,vbeg,c,a):
-    """ solve backwards with v_plus from previous iteration """
-
-    v = np.zeros(vbeg_plus.shape)
-
-    # a. solution step
-    for i_z in nb.prange(par.Nz):
-        for i_a_lag in nb.prange(par.Na):
-
-            # i. cash-on-hand and maximum consumption
-            m = (1+par.r)*par.a_grid[i_a_lag] + par.w*par.z_grid[i_z]
-            c_max = m - par.b*par.w
-
-            # ii. initial consumption and bounds
-            c_guess = np.zeros((1,1))
-            bounds = np.zeros((1,2))
-
-            c_guess[0] = c_plus[i_z,i_a_lag]
-            bounds[0,0] = 1e-8 
-            bounds[0,1] = c_max
-
-            # iii. optimize
-            results = qe.optimize.nelder_mead(value_of_choice,
-                c_guess, 
-                bounds=bounds,
-                args=(par,i_z,m,vbeg_plus))
-
-            # iv. save
-            c[i_z,i_a_lag] = results.x[0]
-            a[i_z,i_a_lag] = m-c[i_z,i_a_lag]
-            v[i_z,i_a_lag] = results.fun # convert to maximum
-
-    # b. expectation step
-    vbeg[:,:] = par.z_trans@v
-      
-
 ############################
 # simulation - monte carlo #
 ############################
@@ -363,15 +311,17 @@ def simulate_forwards_mc(t,par,sim,sol):
         p_z = sim.p_z[t,i]
         i_z_ = i_z[t,i] = choice(p_z,par.z_trans_cumsum[i_z_lag,:])
 
-        # c. consumption
+        # c. consumption and labor supply
         c[t,i] = interp_1d(par.a_grid,sol.c[i_z_,:],a_lag)
-
-        # labor 
         l[t,i] = interp_1d(par.a_grid,sol.l[i_z_,:],a_lag)
 
         # d. end-of-period assets
         m = (1+par.r)*a_lag + par.w*par.z_grid[i_z_]*l[t,i]
         a[t,i] = m-c[t,i]
+
+        # e. enforce borrowing constraint
+        if a[t,i] < 0.0:
+            a[t,i] = 0.0
 
 ##########################
 # simulation - histogram #
