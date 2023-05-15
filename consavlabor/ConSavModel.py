@@ -1,6 +1,10 @@
 import time
 import numpy as np
 import numba as nb
+import random
+
+# set seed
+random.seed(0)
 
 import quantecon as qe
 
@@ -40,10 +44,16 @@ class ConSavModelClass(EconModelClass):
         par.w = 1.0 # wage level
         par.rho_zt = 0.96 # AR(1) parameter
         par.sigma_psi = 0.10 # std. of persistent shock
-        par.Nzt = 5 # number of grid points for zt
+        par.Nzt = 3 # number of grid points for zt
         par.sigma_xi = 0.10 # std. of transitory shock
         par.Nxi = 2 # number of grid points for xi
         par.Nbeta = 3 # number of fixed discrete states
+
+        # shocks
+        par.rh = 0.02
+        par.sigma_eps = 0.01 # std. dev. of normal shock
+        par.pi = 0.01 # large shock
+        par.gamma = 0.05 # probability of large shock
         
         # taxes
         par.tau = 0.01 
@@ -54,7 +64,7 @@ class ConSavModelClass(EconModelClass):
 
         # grid
         par.a_max = 100.0 # maximum point in grid
-        par.Na = 500 # number of grid points       
+        par.Na = 1000 # number of grid points       
 
         # simulation
         par.simT = 500 # number of periods
@@ -108,6 +118,7 @@ class ConSavModelClass(EconModelClass):
 
         par.a_grid = par.w*equilogspace(par.b,par.a_max,par.Na)
         par.beta_grid = np.array([par.beta_tilde-par.sigma_beta,par.beta_tilde,par.beta_tilde+par.sigma_beta])
+        
         # c. solution arrays
         sol.c = np.zeros((par.Nz,par.Na))
         sol.l = np.zeros((par.Nz,par.Na)) #added labor
