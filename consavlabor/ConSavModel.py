@@ -10,7 +10,7 @@ import quantecon as qe
 
 from EconModel import EconModelClass, jit
 
-from consav.grids import equilogspace
+from tools import equilogspace
 from consav.markov import log_rouwenhorst, find_ergodic, choice
 from consav.quadrature import log_normal_gauss_hermite
 from consav.linear_interp import binary_search, interp_1d, interp_1d_vec
@@ -61,10 +61,11 @@ class ConSavModelClass(EconModelClass):
         # saving
         par.r = 0.02 # interest rate
         par.b = -0.10 # borrowing constraint relative to wage
+        # par.b = 0.0
 
         # grid
         par.a_max = 100.0 # maximum point in grid
-        par.Na = 1000 # number of grid points       
+        par.Na = 500 # number of grid points       
 
         # simulation
         par.simT = 500 # number of periods
@@ -327,12 +328,12 @@ def simulate_forwards_mc(t,par,sim,sol):
         l[t,i] = interp_1d(par.a_grid,sol.l[i_z_,:],a_lag)
 
         # d. end-of-period assets
-        m = (1+par.r)*a_lag + par.w*par.z_grid[i_z_]*l[t,i]
+        m = (1+par.r)*a_lag + (1-par.tau)*par.w*par.z_grid[i_z_]*l[t,i]
         a[t,i] = m-c[t,i]
 
         # e. enforce borrowing constraint
-        if a[t,i] < 0.0:
-            a[t,i] = 0.0
+        # if a[t,i] < 0.0:
+        #     a[t,i] = 0.0
 
 ##########################
 # simulation - histogram #

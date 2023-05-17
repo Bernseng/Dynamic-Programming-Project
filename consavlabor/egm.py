@@ -21,7 +21,7 @@ def solve_hh_backwards_egm(par,vbeg_plus,v_a,c_plus,ell,c,l,a,u):
         w = (1-par.tau)*par.w*z
 
         # generate shocks
-        zeta = generate_zeta(par)
+        # zeta = generate_zeta(par)
 
         # a. post-decision marginal value of cash
         q_vec = np.zeros(par.Na)
@@ -34,9 +34,8 @@ def solve_hh_backwards_egm(par,vbeg_plus,v_a,c_plus,ell,c,l,a,u):
         l_vec = fac*(c_vec)**(-par.sigma/par.nu) #FOC l
 
         m_endo = par.a_grid+c_vec - w*l_vec
-        # m_exo = (1+par.r)*par.a_grid
-        m_exo = (1+par.rh+zeta)*par.a_grid
-
+        m_exo = (1+par.r)*par.a_grid
+        # m_exo = (1+par.rh+zeta)*par.a_grid
 
         # interpolate
         interp_1d_vec(m_endo,c_vec,m_exo,c[i_z,:])
@@ -67,7 +66,7 @@ def solve_hh_backwards_egm(par,vbeg_plus,v_a,c_plus,ell,c,l,a,u):
                     if np.abs(error) < par.tol_l:
                         break
                     else:
-                        derror = 1.0 - fac*(-par.sigma/par.nu)*ci**(-par.sigma/par.nu - 1.0)*w
+                        derror = 1.0 - fac*(-par.sigma/par.nu)*ci**(-par.sigma/par.nu-1.0)*w
                         ell = ell - error/derror
 
                     it += 1
@@ -83,4 +82,4 @@ def solve_hh_backwards_egm(par,vbeg_plus,v_a,c_plus,ell,c,l,a,u):
     vbeg_plus = par.z_trans@v_a
 
     #Calculating utility
-    u[i_z, :] = utility.func(c[i_z, :], l[i_z, :], par)
+    u[i_z, :] = utility.func(c[i_z,:], l[i_z,:], par)

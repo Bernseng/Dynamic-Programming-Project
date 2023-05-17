@@ -23,4 +23,22 @@ def generate_zeta(par):
     return epsilon + eta
 
 
+def equilogspace(x_min,x_max,n):
+    """ like np.linspace. but (close to) equidistant in logs
 
+    Args:
+
+        x_min (double): maximum value
+        x_max (double): minimum value
+        n (int): number of points
+    
+    Returns:
+
+        y (list): grid with unequal spacing
+
+    """
+
+    pivot = np.abs(x_min) + 0.25
+    y = np.geomspace(x_min + pivot, x_max + pivot, n) - pivot
+    y[0] = x_min  # make sure *exactly* equal to x_min
+    return y
