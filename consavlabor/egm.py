@@ -11,7 +11,7 @@ from tools import generate_zeta
 
 
 @njit(parallel=True)
-def solve_hh_backwards_egm(par,vbeg_plus,v_a,c_plus,ell,c,l,a,u):
+def solve_hh_backwards_egm(par,vbeg_plus,c_plus,ell,c,l,a,u):
     """ solve backwards with v_plus from previous iteration """
 
     for i_z in nb.prange(par.Nz):
@@ -78,8 +78,8 @@ def solve_hh_backwards_egm(par,vbeg_plus,v_a,c_plus,ell,c,l,a,u):
                     l[i_z,i_a_lag] = ell
 
         # b. expectation steps
-    v_a = (1.0+par.r)*c[:]**(-par.sigma)
-    vbeg_plus = par.z_trans@v_a
+    # v_a = (1.0+par.r)*c[:]**(-par.sigma)
+    # vbeg_plus = par.z_trans@v_a
 
     #Calculating utility
     u[i_z, :] = utility.func(c[i_z,:], l[i_z,:], par)

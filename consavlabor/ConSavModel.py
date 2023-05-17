@@ -185,7 +185,7 @@ class ConSavModelClass(EconModelClass):
                     vfi.solve_hh_backwards_vfi(par,vbeg_plus,c_plus,ell,sol.vbeg,sol.c,sol.a)  
                     max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
                 elif algo == 'egm':
-                    egm.solve_hh_backwards_egm(par,vbeg_plus,v_plus,c_plus,ell,sol.c,sol.l,sol.a,sol.u)
+                    egm.solve_hh_backwards_egm(par,vbeg_plus,c_plus,ell,sol.c,sol.l,sol.a,sol.u)
                     max_abs_diff = np.max(np.abs(sol.c-c_plus))
                 else:
                     raise NotImplementedError
@@ -232,7 +232,7 @@ class ConSavModelClass(EconModelClass):
 
     def simulate(self,algo='mc',do_print=True):
         """ simulate model """
-
+        
         t0 = time.time()
 
         with jit(self) as model:
@@ -242,7 +242,12 @@ class ConSavModelClass(EconModelClass):
             sol = model.sol
 
             # prepare
-            if algo == 'hist': find_i_and_w(par,sol)
+            if algo == 'hist': 
+                find_i_and_w(par,sol)
+            if algo == 'mc':
+                sim.a_ini[:] = 0.0
+                sim.p_z_ini[:] = np.random.uniform(size=(par.simN,))
+                sim.p_z[:,:] = np.random.uniform(size=(par.simT,par.simN))
 
             # time loop
             for t in range(par.simT):
