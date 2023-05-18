@@ -11,7 +11,7 @@ from tools import generate_zeta
 
 
 @njit(parallel=True)
-def solve_hh_backwards_egm(par,vbeg_plus,c_plus,ell,c,l,a,u):
+def solve_hh_backwards_egm(par,vbeg_plus,vbeg,c,l,a,u):
     """ solve backwards with v_plus from previous iteration """
 
     for i_z in nb.prange(par.Nz):
@@ -24,13 +24,13 @@ def solve_hh_backwards_egm(par,vbeg_plus,c_plus,ell,c,l,a,u):
         # zeta = generate_zeta(par)
 
         # a. post-decision marginal value of cash
-        q_vec = np.zeros(par.Na)
-        for i_z_plus in range(par.Nz):
-            q_vec += par.z_trans[i_z,i_z_plus]*c_plus[i_z_plus,:]**(-par.sigma)
+        # q_vec = np.zeros(par.Na)
+        # for i_z_plus in range(par.Nz):
+        #     q_vec += par.z_trans[i_z,i_z_plus]*c_plus[i_z_plus,:]**(-par.sigma)
         
         # b. implied consumption function
         fac = (w/par.varphi)**(1.0/par.nu)
-        c_vec = (par.beta*q_vec)**(-1.0/par.sigma) #FOC c
+        c_vec = (par.beta*vbeg_plus[i_z,:])**(-1.0/par.sigma) #FOC c
         l_vec = fac*(c_vec)**(-par.sigma/par.nu) #FOC l
 
         m_endo = par.a_grid+c_vec - w*l_vec
@@ -43,8 +43,7 @@ def solve_hh_backwards_egm(par,vbeg_plus,c_plus,ell,c,l,a,u):
 
         # calculating savings
         # a[i_z,:] = (1+par.rh+zeta)*par.a_grid + w*l_vec - c[i_z,:]
-        a[i_z,:] = m_exo + w*l_vec - c[i_z,:]
-
+        a[i_z,:] = m_exo + w*l[i_z,:] - c[i_z,:]
 
         # c. interpolate from (m,c) to (a_lag,c)
         for i_a_lag in range(par.Na):
@@ -56,7 +55,7 @@ def solve_hh_backwards_egm(par,vbeg_plus,c_plus,ell,c,l,a,u):
                 a[i_z,i_a_lag] = 0.0 
                 
                 # Solve FOC for ell
-                ell = l_vec[i_a_lag] 
+                ell = l[i_z,i_a_lag] 
                 
                 it = 0
                 while True:
@@ -78,8 +77,8 @@ def solve_hh_backwards_egm(par,vbeg_plus,c_plus,ell,c,l,a,u):
                     l[i_z,i_a_lag] = ell
 
         # b. expectation steps
-    # v_a = (1.0+par.r)*c[:]**(-par.sigma)
-    # vbeg_plus = par.z_trans@v_a
+    v_a = (1.0+par.r)*c[:]**(-par.sigma)
+    vbeg[:] = par.z_trans@v_a
 
     #Calculating utility
     u[i_z, :] = utility.func(c[i_z,:], l[i_z,:], par)

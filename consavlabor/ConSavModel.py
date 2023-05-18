@@ -44,7 +44,7 @@ class ConSavModelClass(EconModelClass):
         par.w = 1.0 # wage level
         par.rho_zt = 0.96 # AR(1) parameter
         par.sigma_psi = 0.10 # std. of persistent shock
-        par.Nzt = 3 # number of grid points for zt
+        par.Nzt = 5 # number of grid points for zt
         par.sigma_xi = 0.10 # std. of transitory shock
         par.Nxi = 2 # number of grid points for xi
         par.Nbeta = 3 # number of fixed discrete states
@@ -60,8 +60,8 @@ class ConSavModelClass(EconModelClass):
         
         # saving
         par.r = 0.02 # interest rate
-        par.b = -0.10 # borrowing constraint relative to wage
-        # par.b = 0.0
+        # par.b = -0.10 # borrowing constraint relative to wage
+        par.b = 0.0
 
         # grid
         par.a_max = 100.0 # maximum point in grid
@@ -167,11 +167,13 @@ class ConSavModelClass(EconModelClass):
                 # a. next-period value function
                 if it == 0: # guess on consuming everything
                     
-                    ell = (1-par.tau)*par.w*par.z_grid*0.0
-                    m_plus = (1+par.r)*par.a_grid[np.newaxis,:] - ell[:,np.newaxis]
-                    c_plus_max = m_plus - par.w*par.b
-                    c_plus = 0.99*c_plus_max # arbitary factor
-                    v_plus = c_plus**(1-par.sigma)/(1-par.sigma)
+                    ell = par.w*par.z_grid
+                    m_plus = (1+par.r)*par.a_grid[np.newaxis,:] + (1-par.tau)*ell[:,np.newaxis]
+                    c_plus = m_plus
+                    # c_plus_max = m_plus - par.w*par.b
+                    # c_plus = 0.99*c_plus_max # arbitary factor
+                    # v_plus = c_plus**(1-par.sigma)/(1-par.sigma)
+                    v_plus = (1+par.r)*c_plus**(-par.sigma)
                     vbeg_plus = par.z_trans@v_plus
 
                 else:
@@ -182,11 +184,11 @@ class ConSavModelClass(EconModelClass):
 
                 # b. solve this period
                 if algo == 'vfi':
-                    vfi.solve_hh_backwards_vfi(par,vbeg_plus,c_plus,ell,sol.vbeg,sol.c,sol.a)  
+                    vfi.solve_hh_backwards_vfi(par,vbeg_plus,sol.vbeg,sol.c,sol.l,sol.a,sol.u)  
                     max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
                 elif algo == 'egm':
-                    egm.solve_hh_backwards_egm(par,vbeg_plus,c_plus,ell,sol.c,sol.l,sol.a,sol.u)
-                    max_abs_diff = np.max(np.abs(sol.c-c_plus))
+                    egm.solve_hh_backwards_egm(par,vbeg_plus,sol.vbeg,sol.c,sol.l,sol.a,sol.u)
+                    max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
                 else:
                     raise NotImplementedError
 
