@@ -18,6 +18,7 @@ from consav.misc import elapsed
 
 import utility
 import egm
+import dc_egm
 import vfi
 
 class ConSavModelClass(EconModelClass):
@@ -48,6 +49,7 @@ class ConSavModelClass(EconModelClass):
         par.sigma_xi = 0.10 # std. of transitory shock
         par.Nxi = 2 # number of grid points for xi
         par.Nbeta = 3 # number of fixed discrete states
+        par.l_exo = 1.0
 
         # shocks
         par.rh = 0.02
@@ -66,6 +68,8 @@ class ConSavModelClass(EconModelClass):
         # grid
         par.a_max = 100.0 # maximum point in grid
         par.Na = 500 # number of grid points       
+        par.Nl = 3
+        par.l_grid = equilogspace(0.0,1.0,par.Nl)
 
         # simulation
         par.simT = 500 # number of periods
@@ -122,11 +126,16 @@ class ConSavModelClass(EconModelClass):
         
         # c. solution arrays
         sol.c = np.zeros((par.Nz,par.Na))
-        sol.l = np.zeros((par.Nz,par.Na)) #added labor
+        sol.l = np.zeros((par.Nz,par.Na)) 
         sol.a = np.zeros((par.Nz,par.Na))
         sol.u = np.zeros((par.Nz,par.Na))
         sol.vbeg = np.zeros((par.Nz,par.Na))
 
+        # sol.c = np.zeros((par.Nl,par.Nz,par.Na))
+        # sol.l = np.zeros((par.Nl,par.Nz,par.Na)) #added labor
+        # sol.a = np.zeros((par.Nl,par.Nz,par.Na))
+        # sol.u = np.zeros((par.Nl,par.Nz,par.Na))
+        # sol.vbeg = np.zeros((par.Nl,par.Nz,par.Na))
         # hist
         sol.pol_indices = np.zeros((par.Nz,par.Na),dtype=np.int_)
         sol.pol_weights = np.zeros((par.Nz,par.Na))
@@ -167,20 +176,35 @@ class ConSavModelClass(EconModelClass):
                 # a. next-period value function
                 if it == 0: # guess on consuming everything
                     
-                    ell = par.w*par.z_grid
-                    m_plus = (1+par.r)*par.a_grid[np.newaxis,:] + (1-par.tau)*ell[:,np.newaxis]
-                    c_plus = m_plus
-                    # c_plus_max = m_plus - par.w*par.b
-                    # c_plus = 0.99*c_plus_max # arbitary factor
-                    # v_plus = c_plus**(1-par.sigma)/(1-par.sigma)
-                    v_plus = (1+par.r)*c_plus**(-par.sigma)
-                    vbeg_plus = par.z_trans@v_plus
+                    if algo == 'egm':
+                        ell = par.w*par.z_grid
+                        m_plus = (1+par.r)*par.a_grid[np.newaxis,:] + (1-par.tau)*ell[:,np.newaxis]
+                        c_plus = m_plus
+                        # c_plus_max = m_plus - par.w*par.b
+                        # c_plus = 0.99*c_plus_max # arbitary factor
+                        # v_plus = c_plus**(1-par.sigma)/(1-par.sigma)
+                        v_plus = (1+par.r)*c_plus**(-par.sigma)
+                        vbeg_plus = par.z_trans@v_plus
+
+                    elif algo == 'dc_egm':
+                        ell = par.l_exo*par.z_grid
+                        m_plus = (1+par.r)*par.a_grid[np.newaxis,:] + (1-par.tau)*ell[:,np.newaxis]
+                        c_plus = m_plus
+                        # c_plus_max = m_plus - par.w*par.b
+                        # c_plus = 0.99*c_plus_max # arbitary factor
+                        # v_plus = c_plus**(1-par.sigma)/(1-par.sigma)
+                        v_plus = (1+par.r)*c_plus**(-par.sigma)
+                        vbeg_plus = par.z_trans@v_plus
 
                 else:
+                    if algo == 'egm':
+                        vbeg_plus = sol.vbeg.copy()
+                        c_plus = sol.c.copy()
+                        ell = sol.l.copy()
 
-                    vbeg_plus = sol.vbeg.copy()
-                    c_plus = sol.c.copy()
-                    ell = sol.l.copy()
+                    elif algo == 'dc_egm':
+                        vbeg_plus = sol.vbeg.copy()
+                        c_plus = sol.c.copy()
 
                 # b. solve this period
                 if algo == 'vfi':
@@ -188,6 +212,9 @@ class ConSavModelClass(EconModelClass):
                     max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
                 elif algo == 'egm':
                     egm.solve_hh_backwards_egm(par,vbeg_plus,sol.vbeg,sol.c,sol.l,sol.a,sol.u)
+                    max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
+                elif algo == 'dc_egm':
+                    dc_egm.solve_hh_backwards_dc_egm(par,vbeg_plus,sol.vbeg,sol.c,sol.a,sol.u)
                     max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
                 else:
                     raise NotImplementedError
