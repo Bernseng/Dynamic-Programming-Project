@@ -18,7 +18,6 @@ from consav.misc import elapsed
 
 import utility
 import egm
-import dc_egm
 import vfi
 
 class ConSavModelClass(EconModelClass):
@@ -186,7 +185,7 @@ class ConSavModelClass(EconModelClass):
                         v_plus = (1+par.r)*c_plus**(-par.sigma)
                         vbeg_plus = par.z_trans@v_plus
 
-                    elif algo == 'dc_egm':
+                    elif algo == 'egm_exo':
                         ell = par.l_exo*par.z_grid
                         m_plus = (1+par.r)*par.a_grid[np.newaxis,:] + (1-par.tau)*ell[:,np.newaxis]
                         c_plus = m_plus
@@ -197,12 +196,13 @@ class ConSavModelClass(EconModelClass):
                         vbeg_plus = par.z_trans@v_plus
 
                 else:
+
                     if algo == 'egm':
                         vbeg_plus = sol.vbeg.copy()
                         c_plus = sol.c.copy()
                         ell = sol.l.copy()
 
-                    elif algo == 'dc_egm':
+                    elif algo == 'egm_exo':
                         vbeg_plus = sol.vbeg.copy()
                         c_plus = sol.c.copy()
 
@@ -213,8 +213,8 @@ class ConSavModelClass(EconModelClass):
                 elif algo == 'egm':
                     egm.solve_hh_backwards_egm(par,vbeg_plus,sol.vbeg,sol.c,sol.l,sol.a,sol.u)
                     max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
-                elif algo == 'dc_egm':
-                    dc_egm.solve_hh_backwards_dc_egm(par,vbeg_plus,sol.vbeg,sol.c,sol.a,sol.u)
+                elif algo == 'egm_exo':
+                    egm.solve_hh_backwards_egm_exo(par,vbeg_plus,sol.vbeg,sol.c,sol.a,sol.u)
                     max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
                 else:
                     raise NotImplementedError
