@@ -65,10 +65,8 @@ class ConSavModelClass(EconModelClass):
         par.b = 0.0
 
         # grid
-        par.a_max = 100.0 # maximum point in grid
+        par.a_max = 500.0 # maximum point in grid
         par.Na = 500 # number of grid points       
-        par.Nl = 3
-        par.l_grid = equilogspace(0.0,1.0,par.Nl)
 
         # simulation
         par.simT = 500 # number of periods
@@ -125,16 +123,12 @@ class ConSavModelClass(EconModelClass):
         
         # c. solution arrays
         sol.c = np.zeros((par.Nz,par.Na))
-        sol.l = np.zeros((par.Nz,par.Na)) 
+        sol.l = np.zeros((par.Nz,par.Na))
+        sol.ell = 0.5 # exogenous labor supply
         sol.a = np.zeros((par.Nz,par.Na))
         sol.u = np.zeros((par.Nz,par.Na))
         sol.vbeg = np.zeros((par.Nz,par.Na))
-
-        # sol.c = np.zeros((par.Nl,par.Nz,par.Na))
-        # sol.l = np.zeros((par.Nl,par.Nz,par.Na)) #added labor
-        # sol.a = np.zeros((par.Nl,par.Nz,par.Na))
-        # sol.u = np.zeros((par.Nl,par.Nz,par.Na))
-        # sol.vbeg = np.zeros((par.Nl,par.Nz,par.Na))
+        
         # hist
         sol.pol_indices = np.zeros((par.Nz,par.Na),dtype=np.int_)
         sol.pol_weights = np.zeros((par.Nz,par.Na))
@@ -186,7 +180,7 @@ class ConSavModelClass(EconModelClass):
                         vbeg_plus = par.z_trans@v_plus
 
                     elif algo == 'egm_exo':
-                        ell = par.l_exo*par.z_grid
+                        ell = par.z_grid*par.w
                         m_plus = (1+par.r)*par.a_grid[np.newaxis,:] + (1-par.tau)*ell[:,np.newaxis]
                         c_plus = m_plus
                         # c_plus_max = m_plus - par.w*par.b
@@ -205,6 +199,7 @@ class ConSavModelClass(EconModelClass):
                     elif algo == 'egm_exo':
                         vbeg_plus = sol.vbeg.copy()
                         c_plus = sol.c.copy()
+                        # ell = sol.ell.copy()
 
                 # b. solve this period
                 if algo == 'vfi':
@@ -214,8 +209,8 @@ class ConSavModelClass(EconModelClass):
                     egm.solve_hh_backwards_egm(par,vbeg_plus,sol.vbeg,sol.c,sol.l,sol.a,sol.u)
                     max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
                 elif algo == 'egm_exo':
-                    egm.solve_hh_backwards_egm_exo(par,vbeg_plus,sol.vbeg,sol.c,sol.a,sol.u)
-                    max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
+                    egm.solve_hh_backwards_egm_exo(par,vbeg_plus,sol.vbeg,sol.c,sol.ell,sol.a,sol.u)
+                    max_abs_diff = np.max(np.abs(sol.c-c_plus))
                 else:
                     raise NotImplementedError
 
