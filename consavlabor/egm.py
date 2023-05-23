@@ -3,7 +3,6 @@ from numba import njit
 import numpy as np
 from consav.linear_interp import interp_1d_vec
 import utility
-from tools import generate_zeta
 
 ##################
 # solution - egm #
@@ -30,7 +29,6 @@ def solve_hh_backwards_egm(par,vbeg_plus,vbeg,c,l,a,u):
 
         m_endo = par.a_grid+c_vec - w*l_vec
         m_exo = (1+par.r)*par.a_grid
-        # m_exo = (1+par.rh+zeta)*par.a_grid
 
         # interpolate
         interp_1d_vec(m_endo,c_vec,m_exo,c[i_z,:])
