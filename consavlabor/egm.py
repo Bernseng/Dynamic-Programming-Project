@@ -9,7 +9,7 @@ import utility
 ##################    
 
 @njit(parallel=True)
-def solve_hh_backwards_egm(par,vbeg_plus,vbeg,c,l,a,u):
+def solve_hh_backwards_egm(par,vbeg_plus,vbeg,c,l,a,u,mpc):
     """ solve backwards with v_plus from previous iteration """
 
     for i_z in nb.prange(par.Nz):
@@ -29,6 +29,12 @@ def solve_hh_backwards_egm(par,vbeg_plus,vbeg,c,l,a,u):
         # interpolate
         interp_1d_vec(m_endo,c_vec,m_exo,c[i_z,:])
         interp_1d_vec(m_endo,l_vec,m_exo,l[i_z,:])
+
+        c_plus = np.empty_like(m_exo)
+        c_minus = np.empty_like(m_exo)
+        interp_1d_vec(m_endo, c_vec, m_exo + par.delta_m, c_plus)
+        interp_1d_vec(m_endo, c_vec, m_exo - par.delta_m, c_minus)
+        mpc[i_z, :] = (c_plus - c_minus) / (2 * par.delta_m)
 
         # calculating savings
         a[i_z,:] = m_exo + w*l[i_z,:] - c[i_z,:]
@@ -73,7 +79,7 @@ def solve_hh_backwards_egm(par,vbeg_plus,vbeg,c,l,a,u):
 
 
 @njit(parallel=True)
-def solve_hh_backwards_egm_exo(par,vbeg_plus,vbeg,c,l,a,u):
+def solve_hh_backwards_egm_exo(par,vbeg_plus,vbeg,c,l,a,u,mpc):
     """ solve backwards with v_plus from previous iteration """
 
     for i_z in nb.prange(par.Nz):
@@ -91,6 +97,12 @@ def solve_hh_backwards_egm_exo(par,vbeg_plus,vbeg,c,l,a,u):
 
         # interpolate
         interp_1d_vec(m_endo,par.a_grid,m_exo,a[i_z])
+
+        c_plus = np.empty_like(m_exo)
+        c_minus = np.empty_like(m_exo)
+        interp_1d_vec(m_endo, c_vec, m_exo + par.delta_m, c_plus)
+        interp_1d_vec(m_endo, c_vec, m_exo - par.delta_m, c_minus)
+        mpc[i_z, :] = (c_plus - c_minus) / (2 * par.delta_m)
 
         # calculating savings
         a[i_z,:] = np.fmax(a[i_z,:],0.0)

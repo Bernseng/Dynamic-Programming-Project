@@ -44,6 +44,7 @@ class ConSavModelClass(EconModelClass):
         par.Nzt = 5 # number of grid points for zt
         par.sigma_xi = 0.10 # std. of transitory shock
         par.Nxi = 2 # number of grid points for xi
+        par.delta_m = 0.01 # change in m to calculate mpc
         
         # taxes
         par.tau = 0.28
@@ -108,6 +109,7 @@ class ConSavModelClass(EconModelClass):
         sol.a = np.zeros((par.Nz,par.Na))
         sol.u = np.zeros((par.Nz,par.Na))
         sol.vbeg = np.zeros((par.Nz,par.Na))
+        sol.mpc = np.zeros((par.Nz,par.Na))
 
         # d. simulation arrays
         sim.a_ini = np.zeros((par.simN,))
@@ -152,10 +154,10 @@ class ConSavModelClass(EconModelClass):
 
                 # b. solve this period
                 if algo == 'egm':
-                    egm.solve_hh_backwards_egm(par,vbeg_plus,sol.vbeg,sol.c,sol.l,sol.a,sol.u)
+                    egm.solve_hh_backwards_egm(par,vbeg_plus,sol.vbeg,sol.c,sol.l,sol.a,sol.u,sol.mpc)
                     max_abs_diff = np.max(np.abs(sol.vbeg-vbeg_plus))
                 elif algo == 'egm_exo':
-                    egm.solve_hh_backwards_egm_exo(par,vbeg_plus,sol.vbeg,sol.c,sol.ell,sol.a,sol.u)
+                    egm.solve_hh_backwards_egm_exo(par,vbeg_plus,sol.vbeg,sol.c,sol.ell,sol.a,sol.u,sol.mpc)
                     max_abs_diff = np.max(np.abs(sol.c-c_plus))
                 else:
                     raise NotImplementedError
