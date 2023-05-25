@@ -8,7 +8,6 @@ import utility
 # solution - egm #
 ##################    
 
-
 @njit(parallel=True)
 def solve_hh_backwards_egm(par,vbeg_plus,vbeg,c,l,a,u):
     """ solve backwards with v_plus from previous iteration """
@@ -18,11 +17,8 @@ def solve_hh_backwards_egm(par,vbeg_plus,vbeg,c,l,a,u):
         # prepare
         z = par.z_grid[i_z]
         w = (1-par.tau)*par.w*z
-
-        # generate shocks
-        # zeta = generate_zeta(par)
         
-        # b. implied consumption function
+        # consumption and labor function
         fac = (w/par.varphi)**(1.0/par.nu)
         c_vec = (par.beta*vbeg_plus[i_z,:])**(-1.0/par.sigma) #FOC c
         l_vec = fac*(c_vec)**(-par.sigma/par.nu) #FOC l
@@ -35,10 +31,9 @@ def solve_hh_backwards_egm(par,vbeg_plus,vbeg,c,l,a,u):
         interp_1d_vec(m_endo,l_vec,m_exo,l[i_z,:])
 
         # calculating savings
-        # a[i_z,:] = (1+par.rh+zeta)*par.a_grid + w*l_vec - c[i_z,:]
         a[i_z,:] = m_exo + w*l[i_z,:] - c[i_z,:]
 
-        # c. interpolate from (m,c) to (a_lag,c)
+        # borrowing contraint
         for i_a_lag in range(par.Na):
          
             # If borrowing constraint is violated
@@ -69,11 +64,11 @@ def solve_hh_backwards_egm(par,vbeg_plus,vbeg,c,l,a,u):
                     c[i_z,i_a_lag] = ci
                     l[i_z,i_a_lag] = ell
 
-        # b. expectation steps
+    # expectation steps
     v_a = (1.0+par.r)*c[:]**(-par.sigma)
     vbeg[:] = par.z_trans@v_a
 
-    #Calculating utility
+    # calculating utility
     u[i_z, :] = utility.func(c[i_z,:], l[i_z,:], par)
 
 
@@ -88,12 +83,11 @@ def solve_hh_backwards_egm_exo(par,vbeg_plus,vbeg,c,l,a,u):
         w = (1-par.tau)*par.w*z
         income = l*w
         
-        # b. implied consumption function
+        # consumption function
         c_vec = (par.beta*vbeg_plus[i_z])**(-1.0/par.sigma) #FOC c
 
         m_endo = par.a_grid+c_vec
         m_exo = (1+par.r)*par.a_grid + income
-        # m_exo = (1+par.rh+zeta)*par.a_grid
 
         # interpolate
         interp_1d_vec(m_endo,par.a_grid,m_exo,a[i_z])
@@ -102,9 +96,9 @@ def solve_hh_backwards_egm_exo(par,vbeg_plus,vbeg,c,l,a,u):
         a[i_z,:] = np.fmax(a[i_z,:],0.0)
         c[i_z] = m_exo - a[i_z]
 
-        # b. expectation steps
+    # expectation steps
     v_a = (1.0+par.r)*c[:]**(-par.sigma)
     vbeg[:] = par.z_trans@v_a
 
-    #Calculating utility
+    # calculating utility
     u[:] = utility.func(c,l,par)
